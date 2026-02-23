@@ -257,7 +257,7 @@ def train(dataset_path, model_save_path='ml_model/stress_model.h5'):
     ]
 
     # 6. Train
-    print("\n[4] ...")
+    print("\n[4] Training...")
     history = model.fit(
     datagen.flow(X_train, y_train_cat, batch_size=BATCH_SIZE),
     steps_per_epoch=None,
