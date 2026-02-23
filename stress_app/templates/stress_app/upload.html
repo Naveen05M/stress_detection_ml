@@ -1,0 +1,144 @@
+{% extends 'stress_app/base.html' %}
+{% block title %}Image Upload – StressGuard AI{% endblock %}
+{% block page_title %}🖼️ Image Upload Detection{% endblock %}
+
+{% block content %}
+{% if model_missing %}
+<div class="alert alert-error" style="margin-bottom:20px;">
+    ⚠️ <strong>Model not trained yet.</strong>
+    Run: <code style="background:#1a1a35;padding:2px 8px;border-radius:4px;">python ml_model/train_model.py --dataset_path /path/to/dataset</code>
+</div>
+{% endif %}
+
+<div class="grid-2">
+    <!-- Upload Form -->
+    <div class="card">
+        <div class="card-title">Upload Face Image</div>
+        <form method="post" enctype="multipart/form-data" id="uploadForm">
+            {% csrf_token %}
+            <label for="imageInput">
+                <div class="upload-area" id="dropZone">
+                    <div class="upload-icon">📸</div>
+                    <div class="upload-label">Drop image here or click to browse</div>
+                    <div class="upload-hint">Supports: JPG, PNG, JPEG · Max size: 10 MB</div>
+                    <div id="previewContainer" style="margin-top:20px;display:none;">
+                        <img id="imagePreview" style="max-width:200px;max-height:200px;border-radius:8px;" />
+                        <div id="imageName" style="margin-top:8px;font-size:13px;color:var(--text-muted);"></div>
+                    </div>
+                </div>
+            </label>
+            <input type="file" id="imageInput" name="image" accept="image/*" required>
+            <div style="margin-top:20px;display:flex;gap:12px;">
+                <button type="submit" class="btn btn-primary" id="analyzeBtn" style="flex:1;">
+                    🔍 Analyze Stress
+                </button>
+                <button type="button" class="btn btn-outline" onclick="clearForm()">Clear</button>
+            </div>
+        </form>
+        <!-- Loading -->
+        <div id="loadingOverlay" style="display:none;text-align:center;padding:40px;">
+            <div style="font-size:40px;margin-bottom:12px;" class="pulse">🔄</div>
+            <div>Analyzing facial expression...</div>
+            <div style="color:var(--text-muted);font-size:13px;margin-top:4px;">Running Deep CNN inference</div>
+        </div>
+    </div>
+
+    <!-- Info Card -->
+    <div class="card">
+        <div class="card-title">ℹ️ How It Works</div>
+        <div style="display:flex;flex-direction:column;gap:16px;">
+            <div style="display:flex;gap:12px;align-items:flex-start;">
+                <div style="background:var(--surface2);border-radius:8px;padding:10px;font-size:20px;">1️⃣</div>
+                <div>
+                    <div style="font-weight:600;margin-bottom:4px;">Face Detection</div>
+                    <div style="color:var(--text-muted);font-size:13px;">OpenCV Haar Cascade detects and crops faces from the uploaded image</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:12px;align-items:flex-start;">
+                <div style="background:var(--surface2);border-radius:8px;padding:10px;font-size:20px;">2️⃣</div>
+                <div>
+                    <div style="font-weight:600;margin-bottom:4px;">Preprocessing</div>
+                    <div style="color:var(--text-muted);font-size:13px;">Grayscale conversion, resize to 48×48, pixel normalization</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:12px;align-items:flex-start;">
+                <div style="background:var(--surface2);border-radius:8px;padding:10px;font-size:20px;">3️⃣</div>
+                <div>
+                    <div style="font-weight:600;margin-bottom:4px;">Deep CNN Inference</div>
+                    <div style="color:var(--text-muted);font-size:13px;">4-block convolutional neural network classifies 7 emotions</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:12px;align-items:flex-start;">
+                <div style="background:var(--surface2);border-radius:8px;padding:10px;font-size:20px;">4️⃣</div>
+                <div>
+                    <div style="font-weight:600;margin-bottom:4px;">Stress Classification</div>
+                    <div style="color:var(--text-muted);font-size:13px;">Maps emotion → Stress level: Angry/Fearful/Disgusted → High, Sad/Surprised → Medium, Happy/Neutral → Low</div>
+                </div>
+            </div>
+        </div>
+        <div style="margin-top:20px;background:var(--surface2);border-radius:10px;padding:16px;">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:10px;">STRESS LEVEL MAPPING</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <span class="badge badge-high">Angry → High</span>
+                <span class="badge badge-high">Fearful → High</span>
+                <span class="badge badge-high">Disgusted → High</span>
+                <span class="badge badge-medium">Sad → Medium</span>
+                <span class="badge badge-medium">Surprised → Medium</span>
+                <span class="badge badge-low">Happy → Low</span>
+                <span class="badge badge-low">Neutral → Low</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const input = document.getElementById('imageInput');
+const preview = document.getElementById('imagePreview');
+const container = document.getElementById('previewContainer');
+const nameEl = document.getElementById('imageName');
+const dropZone = document.getElementById('dropZone');
+const form = document.getElementById('uploadForm');
+const loadingOverlay = document.getElementById('loadingOverlay');
+
+input.addEventListener('change', function() {
+    if (this.files[0]) showPreview(this.files[0]);
+});
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        showPreview(file);
+    }
+});
+
+function showPreview(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+        preview.src = e.target.result;
+        container.style.display = 'block';
+        nameEl.textContent = file.name;
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearForm() {
+    input.value = '';
+    preview.src = '';
+    container.style.display = 'none';
+}
+
+form.addEventListener('submit', () => {
+    document.querySelector('.upload-area label > .upload-area, .upload-area').style.display = 'none';
+    loadingOverlay.style.display = 'block';
+});
+</script>
+{% endblock %}

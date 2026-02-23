@@ -1,0 +1,82 @@
+{% extends 'stress_app/base.html' %}
+{% block title %}Detection History – StressGuard AI{% endblock %}
+{% block page_title %}📋 Detection History{% endblock %}
+
+{% block content %}
+<!-- Filters -->
+<div class="card" style="margin-bottom:20px;">
+    <form method="get" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div>
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">STRESS LEVEL</label>
+            <select name="level" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;">
+                <option value="">All Levels</option>
+                <option value="High" {% if filter_level == 'High' %}selected{% endif %}>🔴 High</option>
+                <option value="Medium" {% if filter_level == 'Medium' %}selected{% endif %}>🟡 Medium</option>
+                <option value="Low" {% if filter_level == 'Low' %}selected{% endif %}>🟢 Low</option>
+            </select>
+        </div>
+        <div>
+            <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">EMOTION</label>
+            <select name="emotion" style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;">
+                <option value="">All Emotions</option>
+                {% for em in emotion_labels %}
+                <option value="{{ em }}" {% if filter_emotion == em %}selected{% endif %}>{{ em|capfirst }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="padding:9px 20px;">🔍 Filter</button>
+        <a href="{% url 'history' %}" class="btn btn-outline" style="padding:9px 16px;">Clear</a>
+    </form>
+</div>
+
+<!-- Records Table -->
+<div class="card">
+    <div class="card-title" style="display:flex;justify-content:space-between;">
+        <span>All Records ({{ records|length }})</span>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Timestamp</th>
+                    <th>Source</th>
+                    <th>Emotion</th>
+                    <th>Stress Level</th>
+                    <th>Confidence</th>
+                    <th>Top Scores</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in records %}
+                <tr>
+                    <td style="color:var(--text-muted);">{{ forloop.counter }}</td>
+                    <td style="color:var(--text-muted);white-space:nowrap;">{{ r.timestamp|date:"Y-m-d H:i:s" }}</td>
+                    <td>{% if r.source == 'live' %}📷 Live{% else %}🖼️ Upload{% endif %}</td>
+                    <td style="text-transform:capitalize;font-weight:500;">{{ r.emotion }}</td>
+                    <td><span class="badge badge-{{ r.stress_level|lower }}">{{ r.stress_level }}</span></td>
+                    <td>{{ r.confidence|floatformat:1 }}%</td>
+                    <td style="font-size:11px;color:var(--text-muted);">
+                        {% if r.angry_score > 10 %}A:{{ r.angry_score|floatformat:0 }}% {% endif %}
+                        {% if r.happy_score > 10 %}H:{{ r.happy_score|floatformat:0 }}% {% endif %}
+                        {% if r.neutral_score > 10 %}N:{{ r.neutral_score|floatformat:0 }}% {% endif %}
+                        {% if r.sad_score > 10 %}S:{{ r.sad_score|floatformat:0 }}% {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'delete_record' r.pk %}"
+                           onclick="return confirm('Delete this record?')"
+                           class="btn btn-danger" style="padding:4px 10px;font-size:11px;">Delete</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="8" style="text-align:center;padding:50px;color:var(--text-muted);">
+                    No records found.
+                    {% if filter_level or filter_emotion %}<a href="{% url 'history' %}" style="color:var(--primary);">Clear filters</a>{% endif %}
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

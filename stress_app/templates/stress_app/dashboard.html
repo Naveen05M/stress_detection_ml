@@ -1,0 +1,190 @@
+{% extends 'stress_app/base.html' %}
+{% block title %}Dashboard – StressGuard AI{% endblock %}
+{% block page_title %}📊 Dashboard{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- Stats -->
+<div class="stats-grid">
+    <div class="stat-card info">
+        <div class="stat-label">Total Detections</div>
+        <div class="stat-value">{{ total }}</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="stat-label">🔴 High Stress</div>
+        <div class="stat-value">{{ high_count }}</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="stat-label">🟡 Medium Stress</div>
+        <div class="stat-value">{{ medium_count }}</div>
+    </div>
+    <div class="stat-card success">
+        <div class="stat-label">🟢 Low Stress</div>
+        <div class="stat-value">{{ low_count }}</div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="grid-2" style="margin-bottom:24px;">
+    <div class="card">
+        <div class="card-title">📈 Stress Level Over Time</div>
+        <canvas id="timelineChart" height="200"></canvas>
+    </div>
+    <div class="card">
+        <div class="card-title">🎭 Emotion Distribution</div>
+        <canvas id="emotionChart" height="200"></canvas>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="grid-2" style="margin-bottom:24px;">
+    <div class="card" style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px;">
+        <div style="font-size:48px;margin-bottom:16px;">🖼️</div>
+        <h3 style="margin-bottom:8px;">Upload Image</h3>
+        <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">Upload a face image to detect stress level instantly</p>
+        <a href="{% url 'upload_detect' %}" class="btn btn-primary">Analyze Image</a>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px;">
+        <div style="font-size:48px;margin-bottom:16px;">📷</div>
+        <h3 style="margin-bottom:8px;">Live Camera</h3>
+        <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px;">Real-time stress monitoring via webcam</p>
+        <a href="{% url 'live_detect' %}" class="btn btn-primary">Start Camera</a>
+    </div>
+</div>
+
+<!-- Model Info -->
+{% if metrics %}
+<div class="card" style="margin-bottom:24px;">
+    <div class="card-title">🤖 Model Performance</div>
+    <div class="grid-3">
+        <div style="text-align:center;">
+            <div style="font-size:28px;font-weight:700;color:var(--primary);">{{ metrics.accuracy|floatformat:2 }}%</div>
+            <div style="font-size:12px;color:var(--text-muted);">Accuracy</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:28px;font-weight:700;color:var(--low);">{{ metrics.recall|floatformat:2 }}%</div>
+            <div style="font-size:12px;color:var(--text-muted);">Recall</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:28px;font-weight:700;color:var(--medium);">{{ metrics.f1_score|floatformat:2 }}%</div>
+            <div style="font-size:12px;color:var(--text-muted);">F1 Score</div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Recent Records -->
+<div class="card">
+    <div class="card-title" style="display:flex;justify-content:space-between;">
+        <span>🕒 Recent Detections</span>
+        <a href="{% url 'history' %}" style="font-size:12px;color:var(--primary);text-decoration:none;">View All →</a>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Source</th>
+                    <th>Emotion</th>
+                    <th>Stress Level</th>
+                    <th>Confidence</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in records %}
+                <tr>
+                    <td style="color:var(--text-muted);">{{ r.timestamp|date:"M d, H:i:s" }}</td>
+                    <td>
+                        {% if r.source == 'live' %}📷 Live{% else %}🖼️ Upload{% endif %}
+                    </td>
+                    <td style="text-transform:capitalize;">{{ r.emotion }}</td>
+                    <td>
+                        <span class="badge badge-{{ r.stress_level|lower }}">{{ r.stress_level }}</span>
+                    </td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div class="emotion-bar" style="width:80px;">
+                                <div class="emotion-bar-fill"
+                                     style="width:{{ r.confidence }}%;background:
+                                     {% if r.stress_level == 'High' %}var(--high)
+                                     {% elif r.stress_level == 'Medium' %}var(--medium)
+                                     {% else %}var(--low){% endif %};"></div>
+                            </div>
+                            {{ r.confidence|floatformat:1 }}%
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:40px;">
+                    No detections yet. <a href="{% url 'upload_detect' %}" style="color:var(--primary);">Upload an image</a> to get started.
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const timelineData = {{ timeline|safe }};
+const emotionData = JSON.parse('{{ emotion_counts|safe }}');
+
+// ── Timeline Chart ──────────────────────────────────────
+const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+const stressValues = timelineData.map(d => d.stress_level === 'High' ? 3 : d.stress_level === 'Medium' ? 2 : 1);
+new Chart(timelineCtx, {
+    type: 'line',
+    data: {
+        labels: timelineData.map(d => d.timestamp),
+        datasets: [{
+            label: 'Stress Level',
+            data: stressValues,
+            borderColor: '#667eea',
+            backgroundColor: 'rgba(102,126,234,0.15)',
+            fill: true,
+            tension: 0.4,
+            pointBackgroundColor: stressValues.map(v => v===3?'#fc4949':v===2?'#f6ad55':'#68d391'),
+            pointRadius: 5,
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: {
+                min: 0, max: 4,
+                ticks: {
+                    color: '#a0aec0',
+                    callback: v => ['','Low','Medium','High',''][v]
+                },
+                grid: { color: '#2d2d5e' }
+            },
+            x: { ticks: { color: '#a0aec0', maxRotation: 45 }, grid: { display: false } }
+        }
+    }
+});
+
+// ── Emotion Doughnut Chart ──────────────────────────────
+const emotionCtx = document.getElementById('emotionChart').getContext('2d');
+const emLabels = Object.keys(emotionData);
+const emValues = Object.values(emotionData);
+const emColors = ['#fc4949','#ff7043','#e67e22','#68d391','#667eea','#f6ad55','#9f7aea'];
+new Chart(emotionCtx, {
+    type: 'doughnut',
+    data: {
+        labels: emLabels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
+        datasets: [{ data: emValues, backgroundColor: emColors, borderWidth: 0 }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'right', labels: { color: '#e2e8f0', font: { size: 12 }, padding: 12 } }
+        }
+    }
+});
+</script>
+{% endblock %}

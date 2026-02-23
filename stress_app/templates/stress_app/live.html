@@ -1,0 +1,293 @@
+{% extends 'stress_app/base.html' %}
+{% block title %}Live Detection – StressGuard AI{% endblock %}
+{% block page_title %}📷 Live Camera Detection{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="grid-2">
+    <!-- Camera Feed -->
+    <div class="card">
+        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+            <span>📹 Camera Feed</span>
+            <span id="statusBadge" style="font-size:11px;padding:3px 10px;border-radius:10px;background:rgba(252,73,73,.15);color:var(--high);">
+                ● OFFLINE
+            </span>
+        </div>
+
+        <div style="position:relative;background:#000;border-radius:10px;overflow:hidden;min-height:300px;display:flex;align-items:center;justify-content:center;">
+            <video id="rawVideo" autoplay muted playsinline
+                   style="width:100%;display:block;border-radius:10px;"></video>
+            <img id="annotatedFrame"
+                 style="width:100%;position:absolute;top:0;left:0;display:none;border-radius:10px;"
+                 alt="Annotated" />
+            <div id="cameraPlaceholder" style="color:var(--text-muted);text-align:center;padding:40px;">
+                <div style="font-size:48px;margin-bottom:12px;">📷</div>
+                <div>Click Start Camera to begin</div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;">
+            <button id="startBtn" class="btn btn-primary" onclick="startCamera()">▶ Start Camera</button>
+            <button id="stopBtn" class="btn btn-danger" onclick="stopCamera()" disabled>⏹ Stop</button>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                <input type="checkbox" id="showAnnotated" checked style="accent-color:var(--primary);"> Show Annotations
+            </label>
+        </div>
+        <div id="fpsDisplay" style="margin-top:8px;font-size:12px;color:var(--text-muted);">
+            Status: Waiting...
+        </div>
+    </div>
+
+    <!-- Live Results -->
+    <div>
+        <!-- Current Detection -->
+        <div class="card" style="margin-bottom:16px;">
+            <div class="card-title">⚡ Current Detection</div>
+            <div id="noFace" style="text-align:center;padding:30px;color:var(--text-muted);">
+                <div style="font-size:36px;margin-bottom:8px;">👤</div>
+                No face detected
+            </div>
+            <div id="faceResult" style="display:none;">
+                <div id="stressBanner" style="border-radius:10px;padding:16px;text-align:center;margin-bottom:16px;">
+                    <div id="stressLevel" style="font-size:26px;font-weight:800;"></div>
+                    <div id="emotionLabel" style="font-size:14px;color:var(--text-muted);margin-top:4px;"></div>
+                </div>
+                <div id="emotionBars"></div>
+            </div>
+        </div>
+
+        <!-- Timeline Chart -->
+        <div class="card">
+            <div class="card-title">📊 Live Stress Timeline</div>
+            <canvas id="liveChart" height="160"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Session Stats -->
+<div class="stats-grid" style="margin-top:24px;">
+    <div class="stat-card info"><div class="stat-label">Frames Analyzed</div><div class="stat-value" id="statFrames">0</div></div>
+    <div class="stat-card danger"><div class="stat-label">High Stress</div><div class="stat-value" id="statHigh">0</div></div>
+    <div class="stat-card warning"><div class="stat-label">Medium Stress</div><div class="stat-value" id="statMedium">0</div></div>
+    <div class="stat-card success"><div class="stat-label">Low Stress</div><div class="stat-value" id="statLow">0</div></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRFTOKEN = '{{ csrf_token }}';
+let stream = null;
+let detecting = false;
+let intervalId = null;
+let stats = { frames: 0, high: 0, medium: 0, low: 0 };
+
+// ── Live Chart ──────────────────────────────────────
+const chartData = {
+    labels: [],
+    datasets: [{
+        label: 'Stress',
+        data: [],
+        borderColor: '#667eea',
+        backgroundColor: 'rgba(102,126,234,0.12)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4,
+        pointBackgroundColor: []
+    }]
+};
+
+const liveChart = new Chart(
+    document.getElementById('liveChart').getContext('2d'), {
+    type: 'line',
+    data: chartData,
+    options: {
+        responsive: true,
+        animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: {
+                min: 0, max: 4,
+                ticks: {
+                    color: '#a0aec0',
+                    callback: v => ['','Low','Medium','High',''][v]
+                },
+                grid: { color: '#2d2d5e' }
+            },
+            x: {
+                ticks: { color: '#a0aec0', maxRotation: 45 },
+                grid: { display: false }
+            }
+        }
+    }
+});
+
+function addChartPoint(label, stress) {
+    const val = stress==='High'?3:stress==='Medium'?2:1;
+    const color = stress==='High'?'#fc4949':stress==='Medium'?'#f6ad55':'#68d391';
+    if (chartData.labels.length > 20) {
+        chartData.labels.shift();
+        chartData.datasets[0].data.shift();
+        chartData.datasets[0].pointBackgroundColor.shift();
+    }
+    chartData.labels.push(label);
+    chartData.datasets[0].data.push(val);
+    chartData.datasets[0].pointBackgroundColor.push(color);
+    liveChart.update();
+}
+
+// ── Camera Control ──────────────────────────────────
+async function startCamera() {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 320, height: 240 }
+        });
+        const video = document.getElementById('rawVideo');
+        video.srcObject = stream;
+        document.getElementById('cameraPlaceholder').style.display = 'none';
+        document.getElementById('statusBadge').textContent = '● LIVE';
+        document.getElementById('statusBadge').style.color = 'var(--low)';
+        document.getElementById('statusBadge').style.background = 'rgba(104,211,145,.15)';
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').disabled = false;
+        detecting = true;
+        // Send frame every 3 seconds for smooth camera
+        intervalId = setInterval(captureAndSend, 3000);
+        document.getElementById('fpsDisplay').textContent = 'Status: Running - analyzing every 3 seconds';
+    } catch(e) {
+        alert('Camera access denied: ' + e.message);
+    }
+}
+
+function stopCamera() {
+    detecting = false;
+    clearInterval(intervalId);
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    document.getElementById('rawVideo').srcObject = null;
+    document.getElementById('statusBadge').textContent = '● OFFLINE';
+    document.getElementById('statusBadge').style.color = 'var(--high)';
+    document.getElementById('statusBadge').style.background = 'rgba(252,73,73,.15)';
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled = true;
+    document.getElementById('annotatedFrame').style.display = 'none';
+    document.getElementById('rawVideo').style.display = 'block';
+    document.getElementById('fpsDisplay').textContent = 'Status: Stopped';
+}
+
+// ── Capture and Send Frame ──────────────────────────
+function captureAndSend() {
+    const video = document.getElementById('rawVideo');
+    if (!video.videoWidth) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
+
+    // Compress image more for faster transfer
+    const frameB64 = canvas.toDataURL('image/jpeg', 0.4);
+
+    document.getElementById('fpsDisplay').textContent = 'Status: Analyzing...';
+
+    fetch("{% url 'live_frame' %}", {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': CSRFTOKEN
+        },
+        body: JSON.stringify({ frame: frameB64 })
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('fpsDisplay').textContent =
+            'Status: Running - Last analyzed: ' + new Date().toLocaleTimeString();
+
+        if (data.error) {
+            showNoFace('⚠️ ' + data.error);
+            return;
+        }
+
+        stats.frames++;
+        document.getElementById('statFrames').textContent = stats.frames;
+
+        // Show annotated frame
+        if (document.getElementById('showAnnotated').checked && data.annotated_frame) {
+            document.getElementById('annotatedFrame').src = data.annotated_frame;
+            document.getElementById('annotatedFrame').style.display = 'block';
+            document.getElementById('rawVideo').style.display = 'none';
+        }
+
+        if (data.face_count === 0) {
+            showNoFace();
+            return;
+        }
+
+        const r = data.results[0];
+        updateResultPanel(r);
+        addChartPoint(new Date().toLocaleTimeString(), r.stress_level);
+
+        if (r.stress_level === 'High') stats.high++;
+        else if (r.stress_level === 'Medium') stats.medium++;
+        else stats.low++;
+
+        document.getElementById('statHigh').textContent = stats.high;
+        document.getElementById('statMedium').textContent = stats.medium;
+        document.getElementById('statLow').textContent = stats.low;
+    })
+    .catch(e => {
+        document.getElementById('fpsDisplay').textContent = 'Status: Error - ' + e.message;
+    });
+}
+
+function showNoFace(msg) {
+    document.getElementById('noFace').style.display = 'block';
+    document.getElementById('faceResult').style.display = 'none';
+    if (msg) {
+        document.getElementById('noFace').innerHTML =
+            `<div style="font-size:14px;color:var(--medium);">${msg}</div>`;
+    } else {
+        document.getElementById('noFace').innerHTML =
+            `<div style="font-size:36px;margin-bottom:8px;">👤</div>No face detected`;
+    }
+}
+
+function updateResultPanel(r) {
+    document.getElementById('noFace').style.display = 'none';
+    document.getElementById('faceResult').style.display = 'block';
+
+    const colors = {
+        High:   ['rgba(252,73,73,.15)',   'var(--high)'],
+        Medium: ['rgba(246,173,85,.15)',  'var(--medium)'],
+        Low:    ['rgba(104,211,145,.15)', 'var(--low)']
+    };
+    const [bg, col] = colors[r.stress_level];
+    const banner = document.getElementById('stressBanner');
+    banner.style.background = bg;
+    banner.style.border = `2px solid ${col}`;
+
+    const emoji = r.stress_level==='High'?'🔴':r.stress_level==='Medium'?'🟡':'🟢';
+    document.getElementById('stressLevel').textContent = `${emoji} ${r.stress_level} Stress`;
+    document.getElementById('stressLevel').style.color = col;
+    document.getElementById('emotionLabel').textContent =
+        `${r.emotion.toUpperCase()} | ${r.confidence.toFixed(1)}% confidence`;
+
+    // Emotion bars
+    document.getElementById('emotionBars').innerHTML =
+        Object.entries(r.scores).map(([em, sc]) => `
+        <div style="margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+                <span style="text-transform:capitalize;">${em}</span>
+                <span>${sc.toFixed(1)}%</span>
+            </div>
+            <div class="emotion-bar">
+                <div class="emotion-bar-fill"
+                     style="width:${sc}%;
+                     background:${em===r.emotion?'var(--primary)':'var(--text-muted)'};"></div>
+            </div>
+        </div>`).join('');
+}
+</script>
+{% endblock %}
