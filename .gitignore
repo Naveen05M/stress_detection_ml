@@ -1,1 +1,6 @@
-.dataset
+venv/
+stress_env/
+__pycache__/
+*.h5
+*.pth
+dataset/
