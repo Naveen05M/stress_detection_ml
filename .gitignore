@@ -1,6 +1,19 @@
-venv/
+# Virtual Environment
 stress_env/
+venv/
+
+# Python cache
 __pycache__/
+*.pyc
+
+# ML Models
 *.h5
 *.pth
+*.pt
+
+# Dataset
 dataset/
+data/
+
+# Jupyter
+.ipynb_checkpoints/
