@@ -155,7 +155,7 @@ async function startCamera() {
         document.getElementById('stopBtn').disabled = false;
         detecting = true;
         // Send frame every 3 seconds for smooth camera
-        intervalId = setInterval(captureAndSend, 3000);
+        intervalId = setInterval(captureAndSend, 1000);
         document.getElementById('fpsDisplay').textContent = 'Status: Running - analyzing every 3 seconds';
     } catch(e) {
         alert('Camera access denied: ' + e.message);
@@ -183,8 +183,8 @@ function captureAndSend() {
     if (!video.videoWidth) return;
 
     const canvas = document.createElement('canvas');
-    canvas.width = 320;
-    canvas.height = 240;
+    canvas.width = 480;
+    canvas.height = 360;
     canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
 
     // Compress image more for faster transfer

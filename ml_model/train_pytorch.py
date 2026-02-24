@@ -29,16 +29,28 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # ── GPU Setup ──────────────────────────────────────────
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f'Using device: {device}')
+# Force GPU usage
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+
 if torch.cuda.is_available():
+    device = torch.device('cuda:0')
+    torch.cuda.set_device(0)
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.enabled   = True
     print(f'GPU: {torch.cuda.get_device_name(0)}')
+    print(f'Memory: {torch.cuda.get_device_properties(0).total_memory/1024**2:.0f} MB')
+else:
+    device = torch.device('cpu')
+    print('WARNING: Using CPU only!')
+print(f'Device: {device}')
 
 # ── Constants ──────────────────────────────────────────
 IMG_SIZE     = 48
 BATCH_SIZE   = 64
 EPOCHS       = 120
-LR           = 0.0003
+LR           = 0.0005
 WEIGHT_DECAY = 1e-4
 PATIENCE     = 20
 NUM_CLASSES  = 7
@@ -267,19 +279,24 @@ def train(dataset_path='dataset_combined/'):
         total / (NUM_CLASSES * class_counts.get(i, 1))
         for i in range(NUM_CLASSES)
     ]).to(device)
+
+    # Clip weights so no class gets too much weight
+    class_weights = torch.clamp(class_weights, min=0.5, max=3.0)
+    class_weights = class_weights / class_weights.sum() * NUM_CLASSES
+
+
     print('\n  Class weights (for imbalanced data):')
     for i, w in enumerate(class_weights):
         print(f'  {EMOTION_LABELS[i]:12s}: {w.item():.3f}')
 
-    # Weighted sampler for balanced training
-    sample_weights = [class_weights[y_train[i]].item() for i in range(len(y_train))]
-    sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+    # Remove weighted sampler - use simple shuffle instead
+    # (weighted sampler causes instability with extreme imbalance)
 
     # DataLoaders
     train_loader = DataLoader(
         FaceDataset(X_train, y_train, augment=True),
         batch_size=BATCH_SIZE,
-        sampler=sampler,
+        shuffle=True,
         num_workers=0
     )
     test_loader = DataLoader(
@@ -295,9 +312,11 @@ def train(dataset_path='dataset_combined/'):
     params = sum(p.numel() for p in model.parameters())
     print(f'  Parameters: {params:,}')
 
+    # Verify model is on GPU
+    print('Model on GPU:', next(model.parameters()).is_cuda)
+
     # Loss with label smoothing
     criterion = nn.CrossEntropyLoss(
-        weight=class_weights,
         label_smoothing=0.1
     )
 
