@@ -207,7 +207,7 @@ def train():
 
     # Load data
     print('\n[1] Loading dataset...')
-    X, y = load_dataset('dataset/')
+    X, y = load_dataset('dataset_combined/')
 
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(
