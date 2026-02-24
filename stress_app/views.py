@@ -146,60 +146,56 @@ def live_frame(request):
         return JsonResponse({'error': 'POST required'}, status=405)
 
     try:
-        body = json.loads(request.body)
+        body       = json.loads(request.body)
         frame_data = body.get('frame', '')
 
-        # Decode base64 image
         if ',' in frame_data:
             frame_data = frame_data.split(',')[1]
+
         img_bytes = base64.b64decode(frame_data)
-        nparr = np.frombuffer(img_bytes, np.uint8)
-        img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        nparr     = np.frombuffer(img_bytes, np.uint8)
+        img_bgr   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if img_bgr is None:
             return JsonResponse({'error': 'Invalid image'}, status=400)
 
-        # Resize for faster prediction
-        img_bgr = cv2.resize(img_bgr, (320, 240))
+        img_bgr = cv2.resize(img_bgr, (640, 480))
 
-        # Import predictor
         sys.path.insert(0, str(Path(settings.BASE_DIR) / 'ml_model'))
         from predict import predict_from_image_array, annotate_image, image_to_base64
 
-        results = predict_from_image_array(img_bgr)
+        results   = predict_from_image_array(img_bgr)
         annotated = annotate_image(img_bgr, results)
-        annotated_b64 = image_to_base64(annotated)
+        ann_b64   = image_to_base64(annotated)
 
-        # Save only High stress to DB
-        import random
         for r in results:
-            if r['stress_level'] == 'High' or random.randint(1, 5) == 1:
-                StressRecord.objects.create(
-                    emotion=r['emotion'],
-                    stress_level=r['stress_level'],
-                    confidence=r['confidence'],
-                    source='live',
-                    angry_score=r['scores'].get('angry', 0),
-                    disgusted_score=r['scores'].get('disgusted', 0),
-                    fearful_score=r['scores'].get('fearful', 0),
-                    happy_score=r['scores'].get('happy', 0),
-                    neutral_score=r['scores'].get('neutral', 0),
-                    sad_score=r['scores'].get('sad', 0),
-                    surprised_score=r['scores'].get('surprised', 0),
-                )
+            StressRecord.objects.create(
+                emotion         = r['emotion'],
+                stress_level    = r['stress_level'],
+                confidence      = r['confidence'],
+                source          = 'live',
+                angry_score     = r['scores'].get('angry',     0),
+                disgusted_score = r['scores'].get('disgusted', 0),
+                fearful_score   = r['scores'].get('fearful',   0),
+                happy_score     = r['scores'].get('happy',     0),
+                neutral_score   = r['scores'].get('neutral',   0),
+                sad_score       = r['scores'].get('sad',       0),
+                surprised_score = r['scores'].get('surprised', 0),
+            )
 
         return JsonResponse({
-            'annotated_frame': 'data:image/jpeg;base64,' + annotated_b64,
-            'results': results,
-            'face_count': len(results),
+            'annotated_frame': 'data:image/jpeg;base64,' + ann_b64,
+            'results':         results,
+            'face_count':      len(results),
         })
 
     except FileNotFoundError as e:
-        return JsonResponse({'error': str(e), 'model_missing': True}, status=503)
+        return JsonResponse({
+            'error': 'Model not found. Train the model first.',
+            'detail': str(e)
+        }, status=503)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-
-
 # ─────────────────────────────────────────────────────────────
 #  History & Reports
 # ─────────────────────────────────────────────────────────────
