@@ -237,7 +237,8 @@ def user_live_frame(request):
         annotated = img.copy()
         for r in results:
             x, y, w, h = r['bbox']
-            color = r.get('color', (0, 255, 0))
+            sl = r.get('stress_level', 'Low')
+            color = (0, 0, 255) if sl == 'High' else (0, 165, 255) if sl == 'Medium' else (0, 255, 0)
             cv2.rectangle(annotated, (x, y), (x+w, y+h), color, 2)
             label = f"{r['emotion']} {r['confidence']:.0f}%"
             cv2.putText(annotated, label, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
@@ -245,21 +246,24 @@ def user_live_frame(request):
         annotated_frame_b64 = 'data:image/jpeg;base64,' + b64mod.b64encode(buf).decode()
 
         # Save records
-        for r in results:
-            StressRecord.objects.create(
-                employee=emp,
-                emotion=r.get('emotion', 'neutral'),
-                stress_level=r.get('stress_level', 'Low'),
-                confidence=r.get('confidence', 0),
-                source='live',
-                angry_score=r.get('scores', {}).get('angry', 0),
-                happy_score=r.get('scores', {}).get('happy', 0),
-                neutral_score=r.get('scores', {}).get('neutral', 0),
-                sad_score=r.get('scores', {}).get('sad', 0),
-                fearful_score=r.get('scores', {}).get('fearful', 0),
-                disgusted_score=r.get('scores', {}).get('disgusted', 0),
-                surprised_score=r.get('scores', {}).get('surprised', 0),
-            )
+        if emp and face_count > 0:
+            for r in results:
+                StressRecord.objects.create(
+                    employee=emp,
+                    emotion=r.get('emotion', 'neutral'),
+                    stress_level=r.get('stress_level', 'Low'),
+                    confidence=r.get('confidence', 0),
+                    source='live',
+                    angry_score=r.get('scores', {}).get('angry', 0),
+                    happy_score=r.get('scores', {}).get('happy', 0),
+                    neutral_score=r.get('scores', {}).get('neutral', 0),
+                    sad_score=r.get('scores', {}).get('sad', 0),
+                    fearful_score=r.get('scores', {}).get('fearful', 0),
+                    disgusted_score=r.get('scores', {}).get('disgusted', 0),
+                    surprised_score=r.get('scores', {}).get('surprised', 0),
+                )
+            emp.last_active = timezone.now()
+            emp.save(update_fields=['last_active'])
 
         emp.last_active = timezone.now()
         emp.save(update_fields=['last_active'])
