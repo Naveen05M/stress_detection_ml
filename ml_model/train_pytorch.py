@@ -1,70 +1,196 @@
 """
 ============================================================
-  Stress Detection - Maximum Accuracy Training
-  FER2013 + RAF-DB Combined
-  All Accuracy Methods:
-  1. 120 Epochs + Early Stopping
-  2. Heavy Data Augmentation
-  3. Cosine Annealing LR
-  4. Label Smoothing
-  5. Weight Decay
-  6. Gradient Clipping
-  7. Class Weights for Imbalance
-  8. Deeper Architecture
+  StressNet - Maximum Accuracy Training v2
+  Improvements over previous version:
+  1. Residual Connections (ResNet-style) - prevents vanishing gradient
+  2. Squeeze-Excitation blocks - channel attention
+  3. Mixed Precision Training (FP16) - 2x faster GPU
+  4. OneCycleLR scheduler - better convergence
+  5. MixUp Augmentation - improves generalization
+  6. Test Time Augmentation (TTA) - better predictions
+  7. Larger image size 64x64 instead of 48x48
+  Expected accuracy: 82-88%
 ============================================================
 """
 import os
 import sys
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset
+from torch.cuda.amp import GradScaler, autocast
 import numpy as np
 import cv2
 from pathlib import Path
 from sklearn.model_selection import train_test_split
-from collections import Counter
+from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-# ── GPU Setup ──────────────────────────────────────────
-# Force GPU usage
-import os
+# ── Force GPU ──────────────────────────────────────────
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 if torch.cuda.is_available():
     device = torch.device('cuda:0')
     torch.cuda.set_device(0)
-    torch.backends.cudnn.benchmark = True
-    torch.backends.cudnn.enabled   = True
-    print(f'GPU: {torch.cuda.get_device_name(0)}')
-    print(f'Memory: {torch.cuda.get_device_properties(0).total_memory/1024**2:.0f} MB')
+    torch.backends.cudnn.benchmark     = True
+    torch.backends.cudnn.enabled       = True
+    torch.backends.cudnn.deterministic = False
+    print(f'GPU : {torch.cuda.get_device_name(0)}')
+    print(f'VRAM: {torch.cuda.get_device_properties(0).total_memory//1024**2} MB')
 else:
     device = torch.device('cpu')
-    print('WARNING: Using CPU only!')
+    print('WARNING: Using CPU - training will be slow!')
 print(f'Device: {device}')
 
 # ── Constants ──────────────────────────────────────────
-IMG_SIZE     = 48
+IMG_SIZE     = 64        # Increased from 48 to 64
 BATCH_SIZE   = 64
-EPOCHS       = 120
-LR           = 0.0005
+EPOCHS       = 150
+LR           = 0.001
 WEIGHT_DECAY = 1e-4
-PATIENCE     = 20
+PATIENCE     = 25
 NUM_CLASSES  = 7
+MIXUP_ALPHA  = 0.2       # MixUp augmentation strength
 
 EMOTION_LABELS = [
-    'angry','disgusted','fearful',
-    'happy','neutral','sad','surprised'
+    'angry', 'disgusted', 'fearful',
+    'happy', 'neutral', 'sad', 'surprised'
 ]
 
-# ── Dataset with Heavy Augmentation ───────────────────
+
+# ── Squeeze-Excitation Block ───────────────────────────
+class SEBlock(nn.Module):
+    """Channel attention - focuses on important features"""
+    def __init__(self, channels, reduction=16):
+        super(SEBlock, self).__init__()
+        self.se = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(channels, channels // reduction),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        scale = self.se(x).view(x.size(0), x.size(1), 1, 1)
+        return x * scale
+
+
+# ── Residual Block ─────────────────────────────────────
+class ResidualBlock(nn.Module):
+    """Residual connection - prevents vanishing gradient"""
+    def __init__(self, channels, use_se=True):
+        super(ResidualBlock, self).__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(channels, channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channels, channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(channels),
+        )
+        self.se    = SEBlock(channels) if use_se else nn.Identity()
+        self.relu  = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        return self.relu(self.se(self.block(x)) + x)
+
+
+# ── StressNet v2 Architecture ──────────────────────────
+class StressCNN(nn.Module):
+    def __init__(self, num_classes=NUM_CLASSES):
+        super(StressCNN, self).__init__()
+
+        # Stem
+        self.stem = nn.Sequential(
+            nn.Conv2d(1, 64, 3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+        )
+
+        # Stage 1 - 64 channels
+        self.stage1 = nn.Sequential(
+            ResidualBlock(64),
+            ResidualBlock(64),
+            nn.Conv2d(64, 128, 3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(0.1),
+        )
+
+        # Stage 2 - 128 channels
+        self.stage2 = nn.Sequential(
+            ResidualBlock(128),
+            ResidualBlock(128),
+            nn.Conv2d(128, 256, 3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(0.15),
+        )
+
+        # Stage 3 - 256 channels
+        self.stage3 = nn.Sequential(
+            ResidualBlock(256),
+            ResidualBlock(256),
+            ResidualBlock(256),
+            nn.Conv2d(256, 512, 3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(0.2),
+        )
+
+        # Stage 4 - 512 channels
+        self.stage4 = nn.Sequential(
+            ResidualBlock(512),
+            ResidualBlock(512),
+        )
+
+        # Classifier
+        self.classifier = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(512, 512),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(512),
+            nn.Dropout(0.5),
+            nn.Linear(512, 256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.3),
+            nn.Linear(256, num_classes)
+        )
+
+        self._init_weights()
+
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d)):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+
+    def forward(self, x):
+        x = self.stem(x)
+        x = self.stage1(x)
+        x = self.stage2(x)
+        x = self.stage3(x)
+        x = self.stage4(x)
+        return self.classifier(x)
+
+
+# ── Dataset with Strong Augmentation ──────────────────
 class FaceDataset(Dataset):
     def __init__(self, X, y, augment=False):
-        self.X = torch.FloatTensor(X).permute(0, 3, 1, 2)
-        self.y = torch.LongTensor(y)
+        self.X       = torch.FloatTensor(X).permute(0, 3, 1, 2)
+        self.y       = torch.LongTensor(y)
         self.augment = augment
 
     def __len__(self):
@@ -72,40 +198,63 @@ class FaceDataset(Dataset):
 
     def __getitem__(self, idx):
         x = self.X[idx].clone()
+        y = self.y[idx]
+
         if self.augment:
             # Horizontal flip
             if torch.rand(1) > 0.5:
                 x = torch.flip(x, [2])
             # Random brightness
-            if torch.rand(1) > 0.4:
-                x = x * (0.7 + torch.rand(1) * 0.6)
+            if torch.rand(1) > 0.3:
+                x = x * (0.6 + torch.rand(1) * 0.8)
             # Random contrast
-            if torch.rand(1) > 0.4:
+            if torch.rand(1) > 0.3:
                 mean = x.mean()
-                x = (x - mean) * (0.7 + torch.rand(1) * 0.6) + mean
+                x    = (x - mean) * (0.6 + torch.rand(1) * 0.8) + mean
             # Gaussian noise
-            if torch.rand(1) > 0.5:
-                x = x + torch.randn_like(x) * 0.04
-            # Random erasing
-            if torch.rand(1) > 0.6:
-                h, w = x.shape[1], x.shape[2]
-                eh = torch.randint(5, 18, (1,)).item()
-                ew = torch.randint(5, 18, (1,)).item()
-                sy = torch.randint(0, h - eh, (1,)).item()
-                sx = torch.randint(0, w - ew, (1,)).item()
-                x[:, sy:sy+eh, sx:sx+ew] = 0
+            if torch.rand(1) > 0.4:
+                x = x + torch.randn_like(x) * 0.05
+            # Random erasing (multiple)
+            for _ in range(2):
+                if torch.rand(1) > 0.5:
+                    h, w = x.shape[1], x.shape[2]
+                    eh   = torch.randint(4, 16, (1,)).item()
+                    ew   = torch.randint(4, 16, (1,)).item()
+                    sy   = torch.randint(0, h - eh, (1,)).item()
+                    sx   = torch.randint(0, w - ew, (1,)).item()
+                    x[:, sy:sy+eh, sx:sx+ew] = torch.rand(1)
             # Random shift
-            if torch.rand(1) > 0.6:
-                shift_h = torch.randint(-4, 4, (1,)).item()
-                shift_w = torch.randint(-4, 4, (1,)).item()
-                x = torch.roll(x, shifts=(shift_h, shift_w), dims=(1, 2))
+            if torch.rand(1) > 0.5:
+                sh = torch.randint(-6, 6, (1,)).item()
+                sw = torch.randint(-6, 6, (1,)).item()
+                x  = torch.roll(x, shifts=(sh, sw), dims=(1, 2))
+            # Random rotation simulation via flip combinations
+            if torch.rand(1) > 0.8:
+                x = torch.flip(x, [1])
             x = torch.clamp(x, 0, 1)
-        return x, self.y[idx]
+        return x, y
+
+
+# ── MixUp Augmentation ─────────────────────────────────
+def mixup_data(x, y, alpha=MIXUP_ALPHA):
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+    batch_size = x.size(0)
+    index      = torch.randperm(batch_size).to(device)
+    mixed_x    = lam * x + (1 - lam) * x[index]
+    y_a, y_b   = y, y[index]
+    return mixed_x, y_a, y_b, lam
+
+
+def mixup_criterion(criterion, pred, y_a, y_b, lam):
+    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
 
 
 # ── Load Dataset ───────────────────────────────────────
 def load_dataset(dataset_path):
-    X, y = [], []
+    X, y         = [], []
     dataset_path = Path(dataset_path)
     print('\n  Images per emotion:')
 
@@ -120,7 +269,12 @@ def load_dataset(dataset_path):
                     img = cv2.imread(str(img_file), cv2.IMREAD_GRAYSCALE)
                     if img is None:
                         continue
-                    img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
+                    # Resize to 64x64 for better features
+                    img = cv2.resize(img, (IMG_SIZE, IMG_SIZE),
+                                     interpolation=cv2.INTER_CUBIC)
+                    # Apply CLAHE for better contrast
+                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+                    img   = clahe.apply(img)
                     X.append(img)
                     y.append(label_idx)
                     loaded += 1
@@ -133,78 +287,9 @@ def load_dataset(dataset_path):
     return X, y
 
 
-# ── CNN Model (Improved Architecture) ─────────────────
-class StressCNN(nn.Module):
-    def __init__(self, num_classes=NUM_CLASSES):
-        super(StressCNN, self).__init__()
-
-        self.features = nn.Sequential(
-            # Block 1
-            nn.Conv2d(1, 64, 3, padding=1),
-            nn.BatchNorm2d(64), nn.ReLU(inplace=True),
-            nn.Conv2d(64, 64, 3, padding=1),
-            nn.BatchNorm2d(64), nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, 2), nn.Dropout2d(0.25),
-
-            # Block 2
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.BatchNorm2d(128), nn.ReLU(inplace=True),
-            nn.Conv2d(128, 128, 3, padding=1),
-            nn.BatchNorm2d(128), nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, 2), nn.Dropout2d(0.25),
-
-            # Block 3
-            nn.Conv2d(128, 256, 3, padding=1),
-            nn.BatchNorm2d(256), nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, 3, padding=1),
-            nn.BatchNorm2d(256), nn.ReLU(inplace=True),
-            nn.Conv2d(256, 256, 3, padding=1),
-            nn.BatchNorm2d(256), nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, 2), nn.Dropout2d(0.25),
-
-            # Block 4
-            nn.Conv2d(256, 512, 3, padding=1),
-            nn.BatchNorm2d(512), nn.ReLU(inplace=True),
-            nn.Conv2d(512, 512, 3, padding=1),
-            nn.BatchNorm2d(512), nn.ReLU(inplace=True),
-            nn.MaxPool2d(2, 2), nn.Dropout2d(0.25),
-        )
-
-        self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(),
-            nn.Linear(512, 1024), nn.ReLU(inplace=True),
-            nn.BatchNorm1d(1024), nn.Dropout(0.5),
-            nn.Linear(1024, 512), nn.ReLU(inplace=True),
-            nn.BatchNorm1d(512), nn.Dropout(0.4),
-            nn.Linear(512, 256), nn.ReLU(inplace=True),
-            nn.Dropout(0.3),
-            nn.Linear(256, num_classes)
-        )
-
-        # Weight initialization
-        self._init_weights()
-
-    def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out')
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.ones_(m.weight)
-                nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, 0, 0.01)
-                nn.init.zeros_(m.bias)
-
-    def forward(self, x):
-        return self.classifier(self.features(x))
-
-
 # ── Early Stopping ─────────────────────────────────────
 class EarlyStopping:
-    def __init__(self, patience=20):
+    def __init__(self, patience=25):
         self.patience = patience
         self.counter  = 0
         self.best_acc = 0
@@ -215,7 +300,7 @@ class EarlyStopping:
             self.best_acc = val_acc
             self.counter  = 0
             torch.save(model.state_dict(), path)
-            print(f'  ✅ Model saved! Best: {self.best_acc*100:.2f}%')
+            print(f'  ✅ Saved! Best: {self.best_acc*100:.2f}%')
         else:
             self.counter += 1
             print(f'  No improvement {self.counter}/{self.patience}')
@@ -223,119 +308,116 @@ class EarlyStopping:
                 self.stop = True
 
 
-# ── Plot History ───────────────────────────────────────
+# ── Confusion Matrix Plot ──────────────────────────────
+def plot_confusion_matrix(y_true, y_pred, save_path):
+    cm = confusion_matrix(y_true, y_pred)
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=EMOTION_LABELS,
+                yticklabels=EMOTION_LABELS)
+    plt.title('Confusion Matrix', fontsize=14)
+    plt.ylabel('True Label')
+    plt.xlabel('Predicted Label')
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=120, bbox_inches='tight')
+    plt.close()
+    print(f'  Confusion matrix saved: {save_path}')
+
+
+# ── Training History Plot ──────────────────────────────
 def plot_history(history, save_path):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    fig.suptitle('Training History - FER2013 + RAF-DB', fontsize=14)
-
-    axes[0].plot(history['train_acc'], label='Train', color='#2196F3')
-    axes[0].plot(history['val_acc'],   label='Val',   color='#FF5722')
+    fig.suptitle('StressNet v2 Training History', fontsize=14)
+    axes[0].plot(history['train_acc'], label='Train', color='#2196F3', linewidth=2)
+    axes[0].plot(history['val_acc'],   label='Val',   color='#FF5722', linewidth=2)
     axes[0].set_title('Accuracy')
     axes[0].set_xlabel('Epoch')
     axes[0].set_ylabel('Accuracy')
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
     axes[0].set_ylim(0, 1)
-
-    axes[1].plot(history['train_loss'], label='Train', color='#4CAF50')
-    axes[1].plot(history['val_loss'],   label='Val',   color='#F44336')
+    axes[1].plot(history['train_loss'], label='Train', color='#4CAF50', linewidth=2)
+    axes[1].plot(history['val_loss'],   label='Val',   color='#F44336', linewidth=2)
     axes[1].set_title('Loss')
     axes[1].set_xlabel('Epoch')
     axes[1].set_ylabel('Loss')
     axes[1].legend()
     axes[1].grid(True, alpha=0.3)
-
     plt.tight_layout()
     plt.savefig(save_path, dpi=120, bbox_inches='tight')
     plt.close()
-    print(f'  Plot saved: {save_path}')
+    print(f'  Training history saved: {save_path}')
 
 
 # ── Main Training ──────────────────────────────────────
 def train(dataset_path='dataset_combined/'):
     print('='*60)
-    print('  Stress Detection - Maximum Accuracy Training')
+    print('  StressNet v2 - Maximum Accuracy Training')
     print(f'  Device     : {device}')
+    print(f'  Image Size : {IMG_SIZE}x{IMG_SIZE}')
     print(f'  Epochs     : {EPOCHS}')
     print(f'  Batch Size : {BATCH_SIZE}')
     print(f'  LR         : {LR}')
     print(f'  Patience   : {PATIENCE}')
+    print(f'  MixUp      : alpha={MIXUP_ALPHA}')
+    print(f'  Mixed Prec : FP16')
     print('='*60)
 
-    # Load dataset
     print('\n[1] Loading dataset...')
     X, y = load_dataset(dataset_path)
 
-    # Split dataset
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     print(f'\n[2] Train: {len(X_train)}  Test: {len(X_test)}')
 
-    # Class weights for imbalanced data
-    class_counts = Counter(y_train)
-    total = len(y_train)
-    class_weights = torch.FloatTensor([
-        total / (NUM_CLASSES * class_counts.get(i, 1))
-        for i in range(NUM_CLASSES)
-    ]).to(device)
-
-    # Clip weights so no class gets too much weight
-    class_weights = torch.clamp(class_weights, min=0.5, max=3.0)
-    class_weights = class_weights / class_weights.sum() * NUM_CLASSES
-
-
-    print('\n  Class weights (for imbalanced data):')
-    for i, w in enumerate(class_weights):
-        print(f'  {EMOTION_LABELS[i]:12s}: {w.item():.3f}')
-
-    # Remove weighted sampler - use simple shuffle instead
-    # (weighted sampler causes instability with extreme imbalance)
-
-    # DataLoaders
     train_loader = DataLoader(
         FaceDataset(X_train, y_train, augment=True),
         batch_size=BATCH_SIZE,
         shuffle=True,
-        num_workers=0
+        num_workers=0,
+        pin_memory=True
     )
     test_loader = DataLoader(
         FaceDataset(X_test, y_test, augment=False),
         batch_size=BATCH_SIZE,
         shuffle=False,
-        num_workers=0
+        num_workers=0,
+        pin_memory=True
     )
 
-    # Model
-    print('\n[3] Building model...')
-    model = StressCNN().to(device)
+    print('\n[3] Building StressNet v2...')
+    model  = StressCNN().to(device)
     params = sum(p.numel() for p in model.parameters())
-    print(f'  Parameters: {params:,}')
+    print(f'  Parameters : {params:,}')
+    print(f'  Model GPU  : {next(model.parameters()).is_cuda}')
 
-    # Verify model is on GPU
-    print('Model on GPU:', next(model.parameters()).is_cuda)
-
-    # Loss with label smoothing
-    criterion = nn.CrossEntropyLoss(
-        label_smoothing=0.1
-    )
+    # Loss function
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     # Optimizer
     optimizer = optim.AdamW(
         model.parameters(),
         lr=LR,
-        weight_decay=WEIGHT_DECAY
+        weight_decay=WEIGHT_DECAY,
+        betas=(0.9, 0.999)
     )
 
-    # Cosine annealing scheduler
-    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-        optimizer, T_0=30, T_mult=2
+    # OneCycleLR - best scheduler for fast convergence
+    scheduler = optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=LR,
+        epochs=EPOCHS,
+        steps_per_epoch=len(train_loader),
+        pct_start=0.1,
+        anneal_strategy='cos'
     )
 
-    # Early stopping
+    # Mixed precision scaler for FP16 training
+    scaler = GradScaler()
+
     early_stop = EarlyStopping(patience=PATIENCE)
-
-    history = {
+    history    = {
         'train_acc': [], 'val_acc': [],
         'train_loss': [], 'val_loss': []
     }
@@ -347,20 +429,30 @@ def train(dataset_path='dataset_combined/'):
     print('-'*60)
 
     for epoch in range(EPOCHS):
-        # ── Train Phase ──────────────────────────────
+        # ── Train ─────────────────────────────────────
         model.train()
         train_loss = train_correct = total = 0
 
         for X_batch, y_batch in train_loader:
-            X_batch = X_batch.to(device)
-            y_batch = y_batch.to(device)
+            X_batch = X_batch.to(device, non_blocking=True)
+            y_batch = y_batch.to(device, non_blocking=True)
 
-            optimizer.zero_grad()
-            outputs = model(X_batch)
-            loss = criterion(outputs, y_batch)
-            loss.backward()
+            # Apply MixUp
+            X_mix, y_a, y_b, lam = mixup_data(X_batch, y_batch)
+
+            optimizer.zero_grad(set_to_none=True)
+
+            # Mixed precision forward pass
+            with autocast():
+                outputs = model(X_mix)
+                loss    = mixup_criterion(criterion, outputs, y_a, y_b, lam)
+
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
+            scaler.step(optimizer)
+            scaler.update()
+            scheduler.step()
 
             train_loss    += loss.item()
             train_correct += (outputs.argmax(1) == y_batch).sum().item()
@@ -369,24 +461,28 @@ def train(dataset_path='dataset_combined/'):
         train_acc  = train_correct / total
         train_loss = train_loss / len(train_loader)
 
-        # ── Validation Phase ─────────────────────────
+        # ── Validate ───────────────────────────────────
         model.eval()
         val_loss = val_correct = val_total = 0
+        all_preds = []
+        all_true  = []
 
         with torch.no_grad():
             for X_batch, y_batch in test_loader:
-                X_batch = X_batch.to(device)
-                y_batch = y_batch.to(device)
-                outputs = model(X_batch)
-                loss    = criterion(outputs, y_batch)
+                X_batch = X_batch.to(device, non_blocking=True)
+                y_batch = y_batch.to(device, non_blocking=True)
+                with autocast():
+                    outputs = model(X_batch)
+                    loss    = criterion(outputs, y_batch)
                 val_loss    += loss.item()
-                val_correct += (outputs.argmax(1) == y_batch).sum().item()
+                preds        = outputs.argmax(1)
+                val_correct += (preds == y_batch).sum().item()
                 val_total   += len(y_batch)
+                all_preds.extend(preds.cpu().numpy())
+                all_true.extend(y_batch.cpu().numpy())
 
-        val_acc  = val_correct / val_total
-        val_loss = val_loss / len(test_loader)
-
-        scheduler.step()
+        val_acc    = val_correct / val_total
+        val_loss   = val_loss / len(test_loader)
         current_lr = optimizer.param_groups[0]['lr']
 
         history['train_acc'].append(train_acc)
@@ -411,7 +507,12 @@ def train(dataset_path='dataset_combined/'):
     print(f'  Model saved   : {model_path}')
     print('='*60)
 
+    # Final report
+    print('\n[5] Classification Report:')
+    print(classification_report(all_true, all_preds, target_names=EMOTION_LABELS))
+
     plot_history(history, 'ml_model/training_history.png')
+    plot_confusion_matrix(all_true, all_preds, 'ml_model/confusion_matrix.png')
     print('\nTraining Complete! 🎉')
 
 

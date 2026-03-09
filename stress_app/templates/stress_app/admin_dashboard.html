@@ -1,0 +1,202 @@
+{% extends 'stress_app/admin_base.html' %}
+{% block title %}Dashboard – Admin{% endblock %}
+{% block page_title %}📊 Admin Dashboard{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- Stats Row -->
+<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:24px;">
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+                border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#718096;margin-bottom:6px;">TOTAL EMPLOYEES</div>
+        <div style="font-size:28px;font-weight:800;color:#667eea;">{{ total_employees }}</div>
+    </div>
+    <div style="background:rgba(104,211,145,0.08);border:1px solid rgba(104,211,145,0.2);
+                border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#68d391;margin-bottom:6px;">APPROVED</div>
+        <div style="font-size:28px;font-weight:800;color:#68d391;">{{ approved }}</div>
+    </div>
+    <div style="background:rgba(246,173,85,0.08);border:1px solid rgba(246,173,85,0.2);
+                border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#f6ad55;margin-bottom:6px;">PENDING</div>
+        <div style="font-size:28px;font-weight:800;color:#f6ad55;">{{ pending }}</div>
+    </div>
+    <div style="background:rgba(252,73,73,0.08);border:1px solid rgba(252,73,73,0.2);
+                border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#fc8181;margin-bottom:6px;">REJECTED</div>
+        <div style="font-size:28px;font-weight:800;color:#fc8181;">{{ rejected }}</div>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+                border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#718096;margin-bottom:6px;">TOTAL RECORDS</div>
+        <div style="font-size:28px;font-weight:800;color:#a0aec0;">{{ total_records }}</div>
+    </div>
+    <div style="background:rgba(252,73,73,0.08);border:1px solid rgba(252,73,73,0.2);
+                border-radius:12px;padding:16px;text-align:center;">
+        <div style="font-size:10px;color:#fc8181;margin-bottom:6px;">HIGH STRESS TODAY</div>
+        <div style="font-size:28px;font-weight:800;color:#fc8181;">{{ high_stress }}</div>
+    </div>
+</div>
+
+<!-- Quick Links -->
+{% if pending > 0 %}
+<div style="background:rgba(246,173,85,0.1);border:1px solid rgba(246,173,85,0.3);
+            border-radius:12px;padding:14px 18px;margin-bottom:20px;
+            display:flex;justify-content:space-between;align-items:center;">
+    <div style="color:#f6ad55;font-size:13px;font-weight:600;">
+        ⏳ {{ pending }} employee{{ pending|pluralize }} pending approval
+    </div>
+    <a href="{% url 'admin_employees' %}?status=pending"
+       style="padding:7px 16px;background:rgba(246,173,85,0.2);
+              border:1px solid rgba(246,173,85,0.4);border-radius:7px;
+              color:#f6ad55;font-size:12px;font-weight:600;text-decoration:none;">
+        Review Now →
+    </a>
+</div>
+{% endif %}
+
+<!-- Charts Row -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+                border-radius:14px;padding:20px;">
+        <div style="font-size:12px;font-weight:700;color:#a0aec0;
+                    text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">
+            📈 Stress Timeline (24h)
+        </div>
+        <canvas id="timelineChart" height="140"></canvas>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+                border-radius:14px;padding:20px;">
+        <div style="font-size:12px;font-weight:700;color:#a0aec0;
+                    text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">
+            🎭 Emotion Distribution
+        </div>
+        <canvas id="emotionChart" height="140"></canvas>
+    </div>
+</div>
+
+<!-- Department Stress Table + Recent Records -->
+<div style="display:grid;grid-template-columns:1fr 1.5fr;gap:16px;">
+    <!-- Department Stress -->
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+                border-radius:14px;padding:20px;">
+        <div style="font-size:12px;font-weight:700;color:#a0aec0;
+                    text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">
+            🏢 Department Stress
+        </div>
+        {% for d in dept_stress %}
+        <div style="margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+                <span style="color:#e2e8f0;font-weight:600;">{{ d.department }}</span>
+                <span style="color:{% if d.pct > 50 %}#fc8181{% elif d.pct > 25 %}#f6ad55{% else %}#68d391{% endif %};">
+                    {{ d.pct }}% high
+                </span>
+            </div>
+            <div style="background:rgba(255,255,255,0.06);border-radius:4px;height:6px;">
+                <div style="height:6px;border-radius:4px;
+                    background:{% if d.pct > 50 %}#fc8181{% elif d.pct > 25 %}#f6ad55{% else %}#68d391{% endif %};
+                    width:{{ d.pct }}%;transition:width 0.5s;"></div>
+            </div>
+        </div>
+        {% empty %}
+        <div style="color:#4a5568;font-size:13px;padding:20px 0;text-align:center;">
+            No data yet
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Recent Records -->
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);
+                border-radius:14px;padding:20px;">
+        <div style="font-size:12px;font-weight:700;color:#a0aec0;
+                    text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">
+            ⚡ Latest Detections
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+                <tr style="color:#718096;font-size:10px;text-transform:uppercase;">
+                    <th style="padding:6px 8px;text-align:left;">Employee</th>
+                    <th style="padding:6px 8px;text-align:left;">Emotion</th>
+                    <th style="padding:6px 8px;text-align:left;">Stress</th>
+                    <th style="padding:6px 8px;text-align:left;">Time</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in recent_records %}
+            <tr style="border-top:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:7px 8px;font-weight:600;">
+                    {% if r.employee %}{{ r.employee.full_name }}
+                    <div style="font-size:10px;color:#718096;">{{ r.employee.department }}</div>
+                    {% else %}Unknown{% endif %}
+                </td>
+                <td style="padding:7px 8px;text-transform:capitalize;">{{ r.emotion }}</td>
+                <td style="padding:7px 8px;">
+                    <span style="padding:2px 7px;border-radius:8px;font-size:10px;font-weight:600;
+                        background:{% if r.stress_level == 'High' %}rgba(252,73,73,0.15){% elif r.stress_level == 'Medium' %}rgba(246,173,85,0.15){% else %}rgba(104,211,145,0.15){% endif %};
+                        color:{% if r.stress_level == 'High' %}#fc8181{% elif r.stress_level == 'Medium' %}#f6ad55{% else %}#68d391{% endif %};">
+                        {{ r.stress_level }}
+                    </span>
+                </td>
+                <td style="padding:7px 8px;color:#718096;font-size:10px;">
+                    {{ r.timestamp|time:"H:i:s" }}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" style="padding:20px;text-align:center;color:#4a5568;">
+                No records yet
+            </td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const tlData = {{ timeline|safe }};
+const emData = {{ emotion_counts|safe }};
+
+// Timeline
+new Chart(document.getElementById('timelineChart'), {
+    type: 'line',
+    data: {
+        labels: tlData.map(d => d.timestamp),
+        datasets: [{
+            data: tlData.map(d => d.stress_level==='High'?3:d.stress_level==='Medium'?2:1),
+            borderColor:'#667eea', backgroundColor:'rgba(102,126,234,0.1)',
+            fill:true, tension:0.4, pointRadius:3,
+        }]
+    },
+    options:{
+        responsive:true, animation:false,
+        plugins:{legend:{display:false}},
+        scales:{
+            y:{min:0,max:4,ticks:{color:'#a0aec0',callback:v=>['','Low','Med','High',''][v]||''},
+               grid:{color:'rgba(255,255,255,0.05)'}},
+            x:{ticks:{color:'#a0aec0',maxTicksLimit:8,maxRotation:0},grid:{display:false}}
+        }
+    }
+});
+
+// Emotion Doughnut
+new Chart(document.getElementById('emotionChart'), {
+    type:'doughnut',
+    data:{
+        labels:Object.keys(emData).map(k=>k.charAt(0).toUpperCase()+k.slice(1)),
+        datasets:[{
+            data:Object.values(emData),
+            backgroundColor:['#fc8181','#c53030','#f6ad55','#68d391','#63b3ed','#f6e05e','#b794f4'],
+            borderWidth:2, borderColor:'#13132b'
+        }]
+    },
+    options:{
+        responsive:true, animation:false,
+        plugins:{legend:{position:'right',labels:{color:'#e2e8f0',font:{size:10},padding:6,usePointStyle:true}}}
+    }
+});
+</script>
+{% endblock %}

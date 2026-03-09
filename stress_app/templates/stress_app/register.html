@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Register – StressNet</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+    font-family:'Segoe UI',sans-serif;
+    background:linear-gradient(135deg,#0f0f2e,#1a1a4e,#0f2040);
+    min-height:100vh;padding:30px 20px;
+}
+.container{max-width:680px;margin:0 auto;}
+.card{
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:20px;padding:40px;
+    backdrop-filter:blur(20px);
+}
+.logo{text-align:center;margin-bottom:30px;}
+.logo h1{
+    font-size:24px;font-weight:800;
+    background:linear-gradient(90deg,#667eea,#764ba2);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.logo p{color:#718096;font-size:13px;margin-top:4px;}
+.section-title{
+    color:#667eea;font-size:12px;font-weight:700;
+    text-transform:uppercase;letter-spacing:1px;
+    margin:24px 0 14px;padding-bottom:8px;
+    border-bottom:1px solid rgba(102,126,234,0.3);
+}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.form-group{margin-bottom:16px;}
+label{display:block;color:#a0aec0;font-size:12.5px;margin-bottom:5px;font-weight:500;}
+input,select,textarea{
+    width:100%;padding:11px 14px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:9px;color:#e2e8f0;font-size:13.5px;
+    transition:all 0.3s;outline:none;
+}
+input:focus,select:focus{border-color:#667eea;background:rgba(102,126,234,0.08);}
+input::placeholder{color:#4a5568;}
+select option{background:#1a1a4e;color:#e2e8f0;}
+.required{color:#fc8181;margin-left:3px;}
+.hint{color:#4a5568;font-size:11px;margin-top:4px;}
+.btn-row{display:flex;gap:12px;margin-top:28px;}
+.btn{
+    flex:1;padding:13px;border:none;border-radius:10px;
+    font-size:14px;font-weight:700;cursor:pointer;transition:all 0.3s;
+}
+.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;}
+.btn-secondary{
+    background:rgba(255,255,255,0.07);
+    border:1px solid rgba(255,255,255,0.12);color:#a0aec0;
+}
+.btn:hover{opacity:0.9;transform:translateY(-1px);}
+.alert{
+    padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px;
+}
+.alert-error{background:rgba(252,73,73,0.15);border:1px solid rgba(252,73,73,0.3);color:#fc8181;}
+.errorlist{list-style:none;padding:0;}
+.errorlist li{color:#fc8181;font-size:11.5px;margin-top:4px;}
+.photo-preview{
+    width:80px;height:80px;border-radius:50%;
+    object-fit:cover;border:2px solid #667eea;display:none;
+}
+.step-indicator{
+    display:flex;justify-content:center;gap:8px;margin-bottom:28px;
+}
+.step{
+    width:32px;height:32px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:700;
+}
+.step.done{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;}
+.step.active{background:rgba(102,126,234,0.2);color:#667eea;border:2px solid #667eea;}
+.step.pending{background:rgba(255,255,255,0.05);color:#4a5568;}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="card">
+        <div class="logo">
+            <span style="font-size:40px;">🧠</span>
+            <h1>Employee Registration</h1>
+            <p>Create your StressNet account — pending admin approval</p>
+        </div>
+
+        {% if form.non_field_errors %}
+        <div class="alert alert-error">{{ form.non_field_errors }}</div>
+        {% endif %}
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <!-- Personal Info -->
+            <div class="section-title">👤 Personal Information</div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>First Name <span class="required">*</span></label>
+                    <input type="text" name="first_name"
+                           value="{{ form.first_name.value|default:'' }}"
+                           placeholder="John" required>
+                    {% if form.first_name.errors %}
+                    <ul class="errorlist">{% for e in form.first_name.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label>Last Name <span class="required">*</span></label>
+                    <input type="text" name="last_name"
+                           value="{{ form.last_name.value|default:'' }}"
+                           placeholder="Doe" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Email Address <span class="required">*</span></label>
+                <input type="email" name="email"
+                       value="{{ form.email.value|default:'' }}"
+                       placeholder="john.doe@company.com" required>
+                {% if form.email.errors %}
+                <ul class="errorlist">{% for e in form.email.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                {% endif %}
+            </div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Phone Number</label>
+                    <input type="tel" name="phone"
+                           value="{{ form.phone.value|default:'' }}"
+                           placeholder="+91 9876543210">
+                </div>
+                <div class="form-group">
+                    <label>Profile Photo</label>
+                    <input type="file" name="profile_photo"
+                           accept="image/*" onchange="previewPhoto(this)">
+                    <img id="photoPreview" class="photo-preview" alt="Preview">
+                </div>
+            </div>
+
+            <!-- Work Info -->
+            <div class="section-title">🏢 Work Information</div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Employee ID <span class="required">*</span></label>
+                    <input type="text" name="employee_id"
+                           value="{{ form.employee_id.value|default:'' }}"
+                           placeholder="EMP001" required>
+                    {% if form.employee_id.errors %}
+                    <ul class="errorlist">{% for e in form.employee_id.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                    {% endif %}
+                    <div class="hint">Unique ID given by your company</div>
+                </div>
+                <div class="form-group">
+                    <label>Department <span class="required">*</span></label>
+                    <select name="department">
+                        {% for val, label in form.fields.department.choices %}
+                        <option value="{{ val }}"
+                            {% if form.department.value == val %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Designation / Role</label>
+                    <input type="text" name="designation"
+                           value="{{ form.designation.value|default:'' }}"
+                           placeholder="Software Engineer">
+                </div>
+                <div class="form-group">
+                    <label>Date of Joining</label>
+                    <input type="date" name="date_of_join"
+                           value="{{ form.date_of_join.value|default:'' }}">
+                </div>
+            </div>
+
+            <!-- Account -->
+            <div class="section-title">🔒 Account Security</div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Password <span class="required">*</span></label>
+                    <input type="password" name="password"
+                           placeholder="Min. 6 characters" required minlength="6">
+                    {% if form.password.errors %}
+                    <ul class="errorlist">{% for e in form.password.errors %}<li>{{ e }}</li>{% endfor %}</ul>
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password <span class="required">*</span></label>
+                    <input type="password" name="password2"
+                           placeholder="Repeat password" required>
+                </div>
+            </div>
+
+            <div style="background:rgba(246,173,85,0.1);border:1px solid rgba(246,173,85,0.3);
+                        border-radius:10px;padding:12px 16px;margin:16px 0;font-size:13px;color:#f6ad55;">
+                ⚠️ Your account will require <strong>admin approval</strong> before you can login.
+                You will be notified once approved.
+            </div>
+
+            <div class="btn-row">
+                <button type="button" class="btn btn-secondary"
+                        onclick="window.location='{% url 'login_view' %}'">
+                    ← Back to Login
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    Submit Registration →
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function previewPhoto(input) {
+    const preview = document.getElementById('photoPreview');
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = e => {
+            preview.src     = e.target.result;
+            preview.style.display = 'block';
+        };
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,210 @@
+{% extends 'stress_app/admin_base.html' %}
+{% block title %}Employees{% endblock %}
+{% block page_title %}Employee Management{% endblock %}
+
+{% block content %}
+
+<!-- Filters -->
+<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:16px;margin-bottom:16px;">
+    <form method="GET" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div>
+            <label style="display:block;color:#a0aec0;font-size:12px;margin-bottom:5px;">Search</label>
+            <input type="text" name="search" value="{{ search }}" placeholder="Name or Employee ID"
+                   style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px 12px;font-size:13px;outline:none;">
+        </div>
+        <div>
+            <label style="display:block;color:#a0aec0;font-size:12px;margin-bottom:5px;">Status</label>
+            <select name="status" style="background:#1a1a4e;border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px 12px;font-size:13px;">
+                <option value="">All Status</option>
+                <option value="pending" {% if status_filter == "pending" %}selected{% endif %}>Pending</option>
+                <option value="approved" {% if status_filter == "approved" %}selected{% endif %}>Approved</option>
+                <option value="rejected" {% if status_filter == "rejected" %}selected{% endif %}>Rejected</option>
+            </select>
+        </div>
+        <div>
+            <label style="display:block;color:#a0aec0;font-size:12px;margin-bottom:5px;">Department</label>
+            <select name="dept" style="background:#1a1a4e;border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:8px 12px;font-size:13px;">
+                <option value="">All Departments</option>
+                {% for val, label in dept_choices %}
+                <option value="{{ val }}" {% if dept_filter == val %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" style="padding:8px 18px;background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Search</button>
+        <a href="{% url 'admin_employees' %}" style="padding:8px 14px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#a0aec0;font-size:13px;text-decoration:none;">Reset</a>
+    </form>
+</div>
+
+<!-- Tabs -->
+<div style="display:flex;gap:8px;margin-bottom:16px;">
+    <a href="{% url 'admin_employees' %}" style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;text-decoration:none;border:1px solid rgba(255,255,255,0.15);color:#a0aec0;">All ({{ employees|length }})</a>
+    <a href="{% url 'admin_employees' %}?status=pending" style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;text-decoration:none;border:1px solid rgba(246,173,85,0.4);color:#f6ad55;">Pending</a>
+    <a href="{% url 'admin_employees' %}?status=approved" style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;text-decoration:none;border:1px solid rgba(104,211,145,0.4);color:#68d391;">Approved</a>
+    <a href="{% url 'admin_employees' %}?status=rejected" style="padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;text-decoration:none;border:1px solid rgba(252,73,73,0.4);color:#fc8181;">Rejected</a>
+</div>
+
+<!-- Table -->
+<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;overflow:auto;">
+<table style="width:100%;border-collapse:collapse;min-width:900px;">
+<thead>
+<tr style="background:rgba(102,126,234,0.12);font-size:11px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">
+    <th style="padding:13px 14px;text-align:left;">#</th>
+    <th style="padding:13px 14px;text-align:left;">Employee</th>
+    <th style="padding:13px 14px;text-align:left;">ID</th>
+    <th style="padding:13px 14px;text-align:left;">Department</th>
+    <th style="padding:13px 14px;text-align:left;">Email</th>
+    <th style="padding:13px 14px;text-align:center;">Status</th>
+    <th style="padding:13px 14px;text-align:center;">Latest Emotion</th>
+    <th style="padding:13px 14px;text-align:center;">Detections</th>
+    <th style="padding:13px 14px;text-align:center;">Joined</th>
+    <th style="padding:13px 14px;text-align:center;">Actions</th>
+</tr>
+</thead>
+<tbody>
+{% for emp in employees %}
+<tr style="border-top:1px solid rgba(255,255,255,0.06);"
+    onmouseover="this.style.background='rgba(255,255,255,0.03)'"
+    onmouseout="this.style.background='transparent'">
+
+    <td style="padding:13px 14px;color:#4a5568;font-size:12px;">{{ forloop.counter }}</td>
+
+    <td style="padding:13px 14px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0;">
+                {% if emp.profile_photo %}
+                    <img src="{{ emp.profile_photo.url }}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;" alt="">
+                {% else %}
+                    {{ emp.user.first_name|slice:":1" }}{{ emp.user.last_name|slice:":1" }}
+                {% endif %}
+            </div>
+            <div>
+                <div style="font-weight:600;font-size:13px;color:#e2e8f0;">{{ emp.full_name }}</div>
+                <div style="font-size:11px;color:#718096;">{{ emp.designation|default:"" }}</div>
+            </div>
+        </div>
+    </td>
+
+    <td style="padding:13px 14px;font-size:13px;font-weight:600;color:#667eea;">{{ emp.employee_id }}</td>
+
+    <td style="padding:13px 14px;font-size:12px;color:#a0aec0;">{{ emp.department }}</td>
+
+    <td style="padding:13px 14px;font-size:12px;color:#a0aec0;">{{ emp.user.email }}</td>
+
+    <td style="padding:13px 14px;text-align:center;">
+        {% if emp.status == "approved" %}
+            <span style="background:rgba(104,211,145,0.15);color:#68d391;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;">Approved</span>
+        {% elif emp.status == "pending" %}
+            <span style="background:rgba(246,173,85,0.15);color:#f6ad55;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;">Pending</span>
+        {% else %}
+            <span style="background:rgba(252,73,73,0.15);color:#fc8181;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;">Rejected</span>
+        {% endif %}
+    </td>
+
+    <td style="padding:13px 14px;text-align:center;">
+        {% if emp.latest_record %}
+            {% if emp.latest_record.stress_level == "High" %}
+                <div style="font-size:12px;font-weight:600;color:#fc8181;">{{ emp.latest_record.emotion|title }}</div>
+                <div style="font-size:10px;color:#718096;">High Stress</div>
+            {% elif emp.latest_record.stress_level == "Medium" %}
+                <div style="font-size:12px;font-weight:600;color:#f6ad55;">{{ emp.latest_record.emotion|title }}</div>
+                <div style="font-size:10px;color:#718096;">Medium Stress</div>
+            {% else %}
+                <div style="font-size:12px;font-weight:600;color:#68d391;">{{ emp.latest_record.emotion|title }}</div>
+                <div style="font-size:10px;color:#718096;">Low Stress</div>
+            {% endif %}
+        {% else %}
+            <span style="color:#4a5568;font-size:12px;">No data</span>
+        {% endif %}
+    </td>
+
+    <td style="padding:13px 14px;text-align:center;font-size:16px;font-weight:700;color:#667eea;">{{ emp.total_detections }}</td>
+
+    <td style="padding:13px 14px;text-align:center;font-size:11px;color:#718096;">
+        {{ emp.registered_at|date:"d M Y" }}<br>{{ emp.registered_at|time:"H:i" }}
+    </td>
+
+    <td style="padding:13px 14px;text-align:center;">
+        <div style="display:flex;gap:5px;justify-content:center;flex-wrap:wrap;">
+
+            <a href="{% url 'admin_employee_detail' emp.id %}"
+               style="padding:5px 10px;background:rgba(102,126,234,0.15);color:#667eea;border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;">
+                View
+            </a>
+
+            {% if emp.status == "pending" %}
+                <a href="{% url 'admin_approve' emp.id %}"
+                   style="padding:5px 10px;background:rgba(104,211,145,0.15);color:#68d391;border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;">
+                    Approve
+                </a>
+                <button data-empid="{{ emp.id }}"
+                        onclick="openReject(this.getAttribute('data-empid'))"
+                        style="padding:5px 10px;background:rgba(252,73,73,0.15);color:#fc8181;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">
+                    Reject
+                </button>
+            {% elif emp.status == "rejected" %}
+                <a href="{% url 'admin_approve' emp.id %}"
+                   style="padding:5px 10px;background:rgba(104,211,145,0.15);color:#68d391;border-radius:6px;font-size:11px;font-weight:600;text-decoration:none;">
+                    Approve
+                </a>
+            {% elif emp.status == "approved" %}
+                <button data-empid="{{ emp.id }}"
+                        onclick="openReject(this.getAttribute('data-empid'))"
+                        style="padding:5px 10px;background:rgba(252,73,73,0.15);color:#fc8181;border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;">
+                    Reject
+                </button>
+            {% endif %}
+
+        </div>
+    </td>
+
+</tr>
+{% empty %}
+<tr>
+    <td colspan="10" style="padding:60px;text-align:center;color:#4a5568;">
+        <div style="font-size:40px;margin-bottom:12px;">👥</div>
+        <div>No employees found</div>
+    </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+<!-- Reject Modal -->
+<div id="rejectModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:#1a1a4e;border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:30px;width:440px;max-width:90vw;">
+        <h3 style="color:#fc8181;margin-bottom:8px;font-size:17px;">Reject Employee</h3>
+        <p style="color:#a0aec0;font-size:13px;margin-bottom:16px;">Enter reason for rejection (optional)</p>
+        <form id="rejectForm" method="POST" action="">
+            {% csrf_token %}
+            <textarea name="reason" rows="4" placeholder="Reason for rejection..."
+                      style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:12px;font-size:13px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box;"></textarea>
+            <div style="display:flex;gap:10px;margin-top:14px;">
+                <button type="submit" style="flex:1;padding:11px;background:rgba(252,73,73,0.8);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+                    Confirm Reject
+                </button>
+                <button type="button" onclick="closeReject()" style="flex:1;padding:11px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#a0aec0;font-size:13px;cursor:pointer;">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openReject(empId) {
+    document.getElementById('rejectModal').style.display = 'flex';
+    document.getElementById('rejectForm').action = '/admin-panel/employees/' + empId + '/reject/';
+}
+function closeReject() {
+    document.getElementById('rejectModal').style.display = 'none';
+}
+window.addEventListener('click', function(e) {
+    var modal = document.getElementById('rejectModal');
+    if (e.target === modal) {
+        closeReject();
+    }
+});
+</script>
+
+{% endblock %}

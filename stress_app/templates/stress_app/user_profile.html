@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Profile - StressNet</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',sans-serif;background:#0d0d2b;color:#e2e8f0;}
+.layout{display:flex;min-height:100vh;}
+.sidebar{width:220px;background:rgba(255,255,255,0.03);border-right:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;}
+.sidebar-logo{padding:22px 18px 18px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.brand{font-size:18px;font-weight:800;background:linear-gradient(90deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 18px;margin:2px 8px;border-radius:9px;font-size:13px;color:#a0aec0;text-decoration:none;transition:all 0.2s;}
+.nav-item:hover{background:rgba(255,255,255,0.06);color:#e2e8f0;}
+.nav-item.active{background:rgba(102,126,234,0.15);color:#667eea;font-weight:600;}
+.sidebar-footer{margin-top:auto;padding:14px 18px;border-top:1px solid rgba(255,255,255,0.08);}
+.main{margin-left:220px;flex:1;}
+.topbar{background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.06);padding:14px 24px;display:flex;justify-content:space-between;align-items:center;}
+.content{padding:24px;max-width:700px;}
+.card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:24px;margin-bottom:16px;}
+.row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:13px;}
+.row:last-child{border-bottom:none;}
+.label{color:#718096;}
+.value{color:#e2e8f0;font-weight:500;text-align:right;}
+</style>
+</head>
+<body>
+<div class="layout">
+<div class="sidebar">
+    <div class="sidebar-logo">
+        <div style="font-size:26px;margin-bottom:4px;">🧠</div>
+        <div class="brand">StressNet</div>
+        <div style="font-size:10px;color:#718096;margin-top:2px;">Employee Portal</div>
+    </div>
+    <div style="padding:12px;">
+        <div style="background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.2);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+            <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;margin:0 auto 6px;color:#fff;">
+                {{ emp.user.first_name|slice:":1" }}{{ emp.user.last_name|slice:":1" }}
+            </div>
+            <div style="font-size:13px;font-weight:700;">{{ emp.full_name }}</div>
+            <div style="font-size:11px;color:#718096;">{{ emp.employee_id }}</div>
+        </div>
+    </div>
+    <a href="{% url 'user_dashboard' %}" class="nav-item">📊 Dashboard</a>
+    <a href="{% url 'user_live' %}"      class="nav-item">📷 Live Detection</a>
+    <a href="{% url 'user_history' %}"   class="nav-item">📋 My History</a>
+    <a href="{% url 'user_profile' %}"   class="nav-item active">👤 My Profile</a>
+    <div class="sidebar-footer">
+        <a href="{% url 'logout_view' %}" style="font-size:12px;color:#fc8181;text-decoration:none;">🚪 Logout</a>
+    </div>
+</div>
+<div class="main">
+    <div class="topbar">
+        <div style="font-size:16px;font-weight:700;">👤 My Profile</div>
+    </div>
+    <div class="content">
+
+        <!-- Avatar Card -->
+        <div class="card" style="text-align:center;">
+            <div style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;margin:0 auto 14px;color:#fff;">
+                {% if emp.profile_photo %}
+                    <img src="{{ emp.profile_photo.url }}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;" alt="">
+                {% else %}
+                    {{ emp.user.first_name|slice:":1" }}{{ emp.user.last_name|slice:":1" }}
+                {% endif %}
+            </div>
+            <div style="font-size:22px;font-weight:800;margin-bottom:4px;">{{ emp.full_name }}</div>
+            <div style="font-size:13px;color:#a0aec0;margin-bottom:10px;">{{ emp.designation|default:"Employee" }} &bull; {{ emp.department }}</div>
+            {% if emp.status == "approved" %}
+                <span style="background:rgba(104,211,145,0.15);color:#68d391;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;">Account Approved</span>
+            {% endif %}
+        </div>
+
+        <!-- Details Card -->
+        <div class="card">
+            <div style="font-size:12px;font-weight:700;color:#667eea;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">Personal Information</div>
+            <div class="row"><span class="label">Full Name</span><span class="value">{{ emp.full_name }}</span></div>
+            <div class="row"><span class="label">Email</span><span class="value">{{ emp.user.email }}</span></div>
+            <div class="row"><span class="label">Phone</span><span class="value">{{ emp.phone|default:"--" }}</span></div>
+            <div class="row"><span class="label">Employee ID</span><span class="value" style="color:#667eea;">{{ emp.employee_id }}</span></div>
+            <div class="row"><span class="label">Department</span><span class="value">{{ emp.department }}</span></div>
+            <div class="row"><span class="label">Designation</span><span class="value">{{ emp.designation|default:"--" }}</span></div>
+            <div class="row"><span class="label">Date of Joining</span><span class="value">{{ emp.date_of_join|date:"d M Y"|default:"--" }}</span></div>
+            <div class="row"><span class="label">Registered On</span><span class="value">{{ emp.registered_at|date:"d M Y H:i" }}</span></div>
+            <div class="row"><span class="label">Total Detections</span><span class="value" style="color:#667eea;">{{ emp.total_detections }}</span></div>
+        </div>
+
+    </div>
+</div>
+</div>
+</body>
+</html>

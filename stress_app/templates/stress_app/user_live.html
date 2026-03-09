@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Detection - StressNet</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI',sans-serif; background:#0d0d2b; color:#e2e8f0; }
+.layout { display:flex; min-height:100vh; }
+
+/* Sidebar */
+.sidebar {
+    width:220px; background:rgba(255,255,255,0.03);
+    border-right:1px solid rgba(255,255,255,0.08);
+    display:flex; flex-direction:column;
+    position:fixed; top:0; left:0; height:100vh;
+}
+.sidebar-logo { padding:22px 18px 18px; border-bottom:1px solid rgba(255,255,255,0.08); }
+.brand {
+    font-size:18px; font-weight:800;
+    background:linear-gradient(90deg,#667eea,#764ba2);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.nav-item {
+    display:flex; align-items:center; gap:10px;
+    padding:10px 18px; margin:2px 8px;
+    border-radius:9px; font-size:13px; color:#a0aec0;
+    text-decoration:none; transition:all 0.2s;
+}
+.nav-item:hover { background:rgba(255,255,255,0.06); color:#e2e8f0; }
+.nav-item.active { background:rgba(102,126,234,0.15); color:#667eea; font-weight:600; }
+.sidebar-footer {
+    margin-top:auto; padding:14px 18px;
+    border-top:1px solid rgba(255,255,255,0.08);
+}
+
+/* Main */
+.main { margin-left:220px; flex:1; }
+.topbar {
+    background:rgba(255,255,255,0.02);
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    padding:14px 24px;
+    display:flex; justify-content:space-between; align-items:center;
+    position:sticky; top:0; z-index:50;
+}
+.content { padding:20px; }
+
+/* Cards */
+.card {
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px; padding:18px; margin-bottom:16px;
+}
+.card-title {
+    font-size:12px; font-weight:700; color:#a0aec0;
+    text-transform:uppercase; letter-spacing:0.5px; margin-bottom:14px;
+}
+
+/* Face cards */
+.face-card {
+    border-radius:12px; padding:14px; margin-bottom:10px;
+    border:2px solid rgba(255,255,255,0.08);
+    transition:all 0.3s ease;
+    animation:fadeIn 0.3s ease;
+}
+@keyframes fadeIn {
+    from { opacity:0; transform:translateY(6px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+.face-card.high   { background:rgba(252,73,73,0.08);   border-color:rgba(252,73,73,0.4); }
+.face-card.medium { background:rgba(246,173,85,0.08);  border-color:rgba(246,173,85,0.4); }
+.face-card.low    { background:rgba(104,211,145,0.08); border-color:rgba(104,211,145,0.4); }
+
+.emotion-bar-bg   { background:rgba(255,255,255,0.08); border-radius:4px; height:6px; margin-top:3px; }
+.emotion-bar-fill { height:6px; border-radius:4px; transition:width 0.4s ease; }
+
+/* Stat boxes */
+.stat-box {
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px; padding:12px; text-align:center;
+}
+
+/* Buttons */
+.btn {
+    padding:9px 18px; border:none; border-radius:9px;
+    font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s;
+}
+.btn-start  { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; }
+.btn-stop   { background:rgba(252,73,73,0.2); color:#fc8181; border:1px solid rgba(252,73,73,0.4); }
+.btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+.fps-badge {
+    font-size:11px; padding:2px 8px; border-radius:8px;
+    background:rgba(102,126,234,0.2); color:#667eea; font-weight:600;
+}
+.live-dot {
+    display:inline-block; width:8px; height:8px;
+    border-radius:50%; background:#68d391;
+    animation:blink 1s infinite; margin-right:4px;
+}
+@keyframes blink { 0%,100%{opacity:1;} 50%{opacity:0.2;} }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- Sidebar -->
+<div class="sidebar">
+    <div class="sidebar-logo">
+        <div style="font-size:26px;margin-bottom:4px;">🧠</div>
+        <div class="brand">StressNet</div>
+        <div style="font-size:10px;color:#718096;margin-top:2px;">Employee Portal</div>
+    </div>
+    <div style="padding:12px;">
+        <div style="background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.2);
+                    border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+            <div style="width:40px;height:40px;border-radius:50%;
+                        background:linear-gradient(135deg,#667eea,#764ba2);
+                        display:flex;align-items:center;justify-content:center;
+                        font-size:15px;font-weight:700;margin:0 auto 6px;color:#fff;">
+                {% if emp.profile_photo %}
+                    <img src="{{ emp.profile_photo.url }}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;" alt="">
+                {% else %}
+                    {{ emp.user.first_name|slice:":1" }}{{ emp.user.last_name|slice:":1" }}
+                {% endif %}
+            </div>
+            <div style="font-size:13px;font-weight:700;">{{ emp.full_name }}</div>
+            <div style="font-size:11px;color:#718096;">{{ emp.employee_id }}</div>
+            <div style="font-size:11px;color:#667eea;">{{ emp.department }}</div>
+        </div>
+    </div>
+    <a href="{% url 'user_dashboard' %}" class="nav-item">📊 Dashboard</a>
+    <a href="{% url 'user_live' %}"      class="nav-item active">📷 Live Detection</a>
+    <a href="{% url 'user_history' %}"   class="nav-item">📋 My History</a>
+    <a href="{% url 'user_profile' %}"   class="nav-item">👤 My Profile</a>
+    <div class="sidebar-footer">
+        <div style="font-size:11px;color:#718096;margin-bottom:6px;">
+            Status: <span style="color:#68d391;">Approved</span>
+        </div>
+        <a href="{% url 'logout_view' %}" style="font-size:12px;color:#fc8181;text-decoration:none;">
+            🚪 Logout
+        </a>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+    <div class="topbar">
+        <div style="font-size:16px;font-weight:700;">📷 Live Emotion Detection</div>
+        <div style="display:flex;gap:10px;align-items:center;">
+            <span class="fps-badge" id="fpsBadge">0 FPS</span>
+            <span id="statusBadge" style="font-size:11px;padding:3px 10px;border-radius:10px;
+                  background:rgba(252,73,73,0.15);color:#fc8181;">OFFLINE</span>
+        </div>
+    </div>
+
+    <div class="content">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+
+            <!-- LEFT: Camera -->
+            <div>
+                <div class="card">
+                    <div class="card-title">Camera Feed</div>
+
+                    <!-- Video Box -->
+                    <div style="position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:4/3;">
+                        <video id="rawVideo" autoplay muted playsinline
+                               style="width:100%;height:100%;object-fit:cover;display:block;"></video>
+                        <img  id="annotatedFrame" alt=""
+                              style="width:100%;height:100%;object-fit:cover;position:absolute;top:0;left:0;display:none;">
+                        <div id="placeholder" style="position:absolute;top:50%;left:50%;
+                             transform:translate(-50%,-50%);text-align:center;color:#718096;">
+                            <div style="font-size:48px;margin-bottom:10px;">📷</div>
+                            <div style="font-size:14px;font-weight:600;">Click Start Camera</div>
+                        </div>
+                    </div>
+
+                    <!-- Controls -->
+                    <div style="display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;">
+                        <button id="startBtn" class="btn btn-start" onclick="startCamera()">▶ Start</button>
+                        <button id="stopBtn"  class="btn btn-stop"  onclick="stopCamera()" disabled>⏹ Stop</button>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#a0aec0;">
+                            <input type="checkbox" id="showAnnotated" checked style="accent-color:#667eea;">
+                            Show detection
+                        </label>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#a0aec0;">
+                            Speed:
+                            <select id="intervalSelect" onchange="updateInterval()"
+                                    style="background:#1a1a4e;color:#e2e8f0;border:1px solid rgba(255,255,255,0.12);border-radius:6px;padding:3px 8px;font-size:12px;">
+                                <option value="500">Fast (0.5s)</option>
+                                <option value="1000" selected>Normal (1s)</option>
+                                <option value="2000">Slow (2s)</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div id="statusText" style="margin-top:6px;font-size:11px;color:#718096;">Status: Ready</div>
+                </div>
+
+                <!-- Stats Row -->
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+                    <div class="stat-box">
+                        <div style="font-size:10px;color:#718096;margin-bottom:3px;">FRAMES</div>
+                        <div style="font-size:22px;font-weight:700;color:#667eea;" id="statFrames">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div style="font-size:10px;color:#fc8181;margin-bottom:3px;">HIGH</div>
+                        <div style="font-size:22px;font-weight:700;color:#fc8181;" id="statHigh">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div style="font-size:10px;color:#f6ad55;margin-bottom:3px;">MEDIUM</div>
+                        <div style="font-size:22px;font-weight:700;color:#f6ad55;" id="statMedium">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div style="font-size:10px;color:#68d391;margin-bottom:3px;">LOW</div>
+                        <div style="font-size:22px;font-weight:700;color:#68d391;" id="statLow">0</div>
+                    </div>
+                </div>
+
+                <!-- Timeline Chart -->
+                <div class="card">
+                    <div class="card-title">Stress Timeline</div>
+                    <canvas id="timelineChart" height="110"></canvas>
+                </div>
+            </div>
+
+            <!-- RIGHT: Results -->
+            <div>
+                <div class="card" style="min-height:400px;">
+                    <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+                        <span>Detected Faces</span>
+                        <span id="faceCountBadge" style="font-size:11px;padding:2px 8px;border-radius:8px;
+                              background:rgba(102,126,234,0.15);color:#667eea;">0 Faces</span>
+                    </div>
+                    <div id="noFaceMsg" style="text-align:center;padding:50px 20px;color:#718096;">
+                        <div style="font-size:44px;margin-bottom:10px;">🙂</div>
+                        <div style="font-size:14px;font-weight:600;">No faces detected</div>
+                        <div style="font-size:12px;margin-top:5px;">Start camera and face the webcam</div>
+                    </div>
+                    <div id="facesContainer"></div>
+                </div>
+
+                <!-- Emotion Chart -->
+                <div class="card">
+                    <div class="card-title">Session Emotions</div>
+                    <canvas id="emotionChart" height="160"></canvas>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+var CSRF = '{{ csrf_token }}';
+var stream      = null;
+var detecting   = false;
+var intervalId  = null;
+var currentMs   = 1000;
+var processing  = false;
+var lastTime    = Date.now();
+var fpsHistory  = [];
+var stats       = { frames:0, high:0, medium:0, low:0 };
+var emotionCounts = { angry:0, disgusted:0, fearful:0, happy:0, neutral:0, sad:0, surprised:0 };
+
+// Timeline Chart
+var tlCtx = document.getElementById('timelineChart').getContext('2d');
+var tlData = { labels:[], datasets:[{
+    label:'Stress',
+    data:[],
+    borderColor:'#667eea',
+    backgroundColor:'rgba(102,126,234,0.1)',
+    fill:true, tension:0.4, pointRadius:5,
+    pointBackgroundColor:[],
+    pointBorderColor:'#0d0d2b', pointBorderWidth:1.5
+}]};
+var timelineChart = new Chart(tlCtx, {
+    type:'line', data:tlData,
+    options:{
+        responsive:true, animation:false,
+        plugins:{ legend:{display:false} },
+        scales:{
+            y:{ min:0, max:4,
+                ticks:{ color:'#a0aec0', callback:function(v){ return ['','Low','Med','High',''][v]||''; } },
+                grid:{ color:'rgba(255,255,255,0.05)' } },
+            x:{ ticks:{ color:'#a0aec0', maxTicksLimit:8, maxRotation:0 }, grid:{display:false} }
+        }
+    }
+});
+
+// Emotion Chart
+var emCtx = document.getElementById('emotionChart').getContext('2d');
+var emotionChart = new Chart(emCtx, {
+    type:'doughnut',
+    data:{
+        labels:['Angry','Disgusted','Fearful','Happy','Neutral','Sad','Surprised'],
+        datasets:[{
+            data:[1,1,1,1,1,1,1],
+            backgroundColor:['#fc8181','#c53030','#f6ad55','#68d391','#63b3ed','#f6e05e','#b794f4'],
+            borderWidth:2, borderColor:'#0d0d2b'
+        }]
+    },
+    options:{
+        responsive:true, animation:false,
+        plugins:{ legend:{ position:'right', labels:{ color:'#e2e8f0', font:{size:11}, padding:8, usePointStyle:true } } }
+    }
+});
+
+// Start Camera
+async function startCamera() {
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video:{ width:{ideal:640}, height:{ideal:480}, facingMode:'user', frameRate:{ideal:30} }
+        });
+        var video = document.getElementById('rawVideo');
+        video.srcObject = stream;
+        document.getElementById('placeholder').style.display = 'none';
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').disabled  = false;
+        setStatus('LIVE', '#68d391', 'rgba(104,211,145,0.15)');
+        detecting = true;
+        startDetection();
+    } catch(e) {
+        alert('Camera error: ' + e.message + '\nPlease use Chrome or Edge browser and allow camera access.');
+    }
+}
+
+// Stop Camera
+function stopCamera() {
+    detecting = false;
+    clearInterval(intervalId);
+    if (stream) { stream.getTracks().forEach(function(t){ t.stop(); }); }
+    var video = document.getElementById('rawVideo');
+    video.srcObject = null;
+    document.getElementById('annotatedFrame').style.display = 'none';
+    video.style.display = 'block';
+    document.getElementById('placeholder').style.display = 'block';
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled  = true;
+    document.getElementById('facesContainer').innerHTML = '';
+    document.getElementById('noFaceMsg').style.display = 'block';
+    document.getElementById('faceCountBadge').textContent = '0 Faces';
+    document.getElementById('fpsBadge').textContent = '0 FPS';
+    setStatus('OFFLINE', '#fc8181', 'rgba(252,73,73,0.15)');
+    document.getElementById('statusText').textContent = 'Status: Stopped';
+}
+
+function startDetection() {
+    clearInterval(intervalId);
+    intervalId = setInterval(captureAndDetect, currentMs);
+    document.getElementById('statusText').textContent = 'Status: Running every ' + currentMs + 'ms';
+}
+
+function updateInterval() {
+    currentMs = parseInt(document.getElementById('intervalSelect').value);
+    if (detecting) { startDetection(); }
+}
+
+function setStatus(text, color, bg) {
+    var b = document.getElementById('statusBadge');
+    b.textContent  = text;
+    b.style.color  = color;
+    b.style.background = bg;
+}
+
+// Capture and Send Frame
+function captureAndDetect() {
+    if (!detecting || processing) { return; }
+    var video = document.getElementById('rawVideo');
+    if (!video.videoWidth || !video.videoHeight) { return; }
+
+    processing = true;
+
+    var canvas = document.createElement('canvas');
+    canvas.width  = 640;
+    canvas.height = 480;
+    canvas.getContext('2d').drawImage(video, 0, 0, 640, 480);
+    var frameB64 = canvas.toDataURL('image/jpeg', 0.55);
+
+    fetch("{% url 'live_frame' %}", {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'X-CSRFToken':CSRF },
+        body: JSON.stringify({ frame: frameB64 })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+        processing = false;
+
+        // FPS
+        var now  = Date.now();
+        var diff = (now - lastTime) / 1000;
+        lastTime = now;
+        var fps  = Math.round(1 / diff);
+        fpsHistory.push(fps);
+        if (fpsHistory.length > 5) { fpsHistory.shift(); }
+        var avgFps = Math.round(fpsHistory.reduce(function(a,b){ return a+b; }, 0) / fpsHistory.length);
+        document.getElementById('fpsBadge').textContent = avgFps + ' FPS';
+        document.getElementById('statusText').textContent = 'Status: Running | ' + new Date().toLocaleTimeString();
+
+        if (data.error) { console.error(data.error); return; }
+
+        // Show annotated frame
+        var showAnnotated = document.getElementById('showAnnotated').checked;
+        var annEl  = document.getElementById('annotatedFrame');
+        var rawEl  = document.getElementById('rawVideo');
+        if (showAnnotated && data.annotated_frame) {
+            annEl.src           = data.annotated_frame;
+            annEl.style.display = 'block';
+            rawEl.style.display = 'none';
+        } else {
+            annEl.style.display = 'none';
+            rawEl.style.display = 'block';
+        }
+
+        var results = data.results || [];
+        document.getElementById('faceCountBadge').textContent = results.length + ' Face' + (results.length !== 1 ? 's' : '');
+
+        stats.frames++;
+        document.getElementById('statFrames').textContent = stats.frames;
+
+        if (results.length === 0) {
+            document.getElementById('noFaceMsg').style.display  = 'block';
+            document.getElementById('facesContainer').innerHTML = '';
+            return;
+        }
+
+        document.getElementById('noFaceMsg').style.display = 'none';
+        renderFaces(results);
+
+        // Update stats
+        var stressSum = 0;
+        results.forEach(function(r) {
+            var sv = r.stress_level === 'High' ? 3 : r.stress_level === 'Medium' ? 2 : 1;
+            stressSum += sv;
+            if (r.stress_level === 'High')        { stats.high++;   }
+            else if (r.stress_level === 'Medium')  { stats.medium++; }
+            else                                   { stats.low++;    }
+            if (emotionCounts.hasOwnProperty(r.emotion)) { emotionCounts[r.emotion]++; }
+        });
+
+        document.getElementById('statHigh').textContent   = stats.high;
+        document.getElementById('statMedium').textContent = stats.medium;
+        document.getElementById('statLow').textContent    = stats.low;
+
+        var avg     = stressSum / results.length;
+        var avgLabel = avg >= 2.5 ? 'High' : avg >= 1.5 ? 'Medium' : 'Low';
+        addTimelinePoint(avgLabel, Math.round(avg * 10) / 10);
+        updateEmotionChart();
+    })
+    .catch(function(e) {
+        processing = false;
+        console.warn('Fetch error:', e);
+    });
+}
+
+function addTimelinePoint(label, val) {
+    var color = label === 'High' ? '#fc8181' : label === 'Medium' ? '#f6ad55' : '#68d391';
+    var time  = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    if (tlData.labels.length >= 30) {
+        tlData.labels.shift();
+        tlData.datasets[0].data.shift();
+        tlData.datasets[0].pointBackgroundColor.shift();
+    }
+    tlData.labels.push(time);
+    tlData.datasets[0].data.push(val);
+    tlData.datasets[0].pointBackgroundColor.push(color);
+    timelineChart.update('none');
+}
+
+function updateEmotionChart() {
+    emotionChart.data.datasets[0].data = Object.values(emotionCounts);
+    emotionChart.update('none');
+}
+
+function renderFaces(results) {
+    var container = document.getElementById('facesContainer');
+    var html = '';
+    results.forEach(function(r, idx) {
+        var cls   = r.stress_level === 'High' ? 'high' : r.stress_level === 'Medium' ? 'medium' : 'low';
+        var color = r.stress_level === 'High' ? '#fc8181' : r.stress_level === 'Medium' ? '#f6ad55' : '#68d391';
+        var emoji = r.stress_level === 'High' ? '🔴' : r.stress_level === 'Medium' ? '🟡' : '🟢';
+
+        var scores = r.scores || {};
+        var scoreKeys = Object.keys(scores).sort(function(a,b){ return scores[b]-scores[a]; });
+        var barsHtml = '';
+        scoreKeys.forEach(function(em) {
+            var sc    = scores[em] || 0;
+            var isTop = em === r.emotion;
+            var bc    = isTop ? color : 'rgba(255,255,255,0.2)';
+            var tc    = isTop ? color : '#a0aec0';
+            var fw    = isTop ? '700' : '400';
+            barsHtml += '<div style="margin-bottom:5px;">';
+            barsHtml += '<div style="display:flex;justify-content:space-between;font-size:10px;color:' + tc + ';font-weight:' + fw + ';">';
+            barsHtml += '<span style="text-transform:capitalize;">' + em + '</span>';
+            barsHtml += '<span>' + parseFloat(sc).toFixed(1) + '%</span></div>';
+            barsHtml += '<div class="emotion-bar-bg"><div class="emotion-bar-fill" style="width:' + Math.min(sc,100) + '%;background:' + bc + ';"></div></div>';
+            barsHtml += '</div>';
+        });
+
+        html += '<div class="face-card ' + cls + '">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+        html += '<div style="font-weight:700;font-size:14px;">' + emoji + ' Face ' + (idx+1);
+        html += ' <span style="color:' + color + ';font-size:13px;margin-left:6px;">' + r.stress_level + ' Stress</span></div>';
+        html += '<div style="font-size:11px;text-align:right;">';
+        html += '<div style="font-weight:600;color:' + color + ';text-transform:capitalize;">' + r.emotion + '</div>';
+        html += '<div style="color:#718096;">' + parseFloat(r.confidence).toFixed(1) + '% conf</div></div>';
+        html += '</div>';
+        html += barsHtml;
+        html += '</div>';
+    });
+    container.innerHTML = html;
+}
+</script>
+</body>
+</html>

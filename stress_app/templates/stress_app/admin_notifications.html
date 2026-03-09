@@ -1,0 +1,24 @@
+{% extends 'stress_app/admin_base.html' %}
+{% block title %}Notifications{% endblock %}
+{% block page_title %}Notifications{% endblock %}
+
+{% block content %}
+<div style="max-width:800px;">
+{% for n in notifs %}
+<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px 20px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;">
+    <div>
+        <div style="font-size:13px;color:#e2e8f0;margin-bottom:4px;">{{ n.message }}</div>
+        <div style="font-size:11px;color:#718096;">{{ n.created_at|date:"d M Y H:i" }}</div>
+    </div>
+    {% if n.link %}
+    <a href="{{ n.link }}" style="padding:6px 14px;background:rgba(102,126,234,0.15);color:#667eea;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;margin-left:12px;">View</a>
+    {% endif %}
+</div>
+{% empty %}
+<div style="text-align:center;padding:60px;color:#4a5568;">
+    <div style="font-size:40px;margin-bottom:12px;">🔔</div>
+    <div>No notifications yet</div>
+</div>
+{% endfor %}
+</div>
+{% endblock %}

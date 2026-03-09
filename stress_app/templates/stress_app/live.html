@@ -1,164 +1,303 @@
 {% extends 'stress_app/base.html' %}
-{% block title %}Live Detection – StressGuard AI{% endblock %}
-{% block page_title %}📷 Live Camera Detection{% endblock %}
+{% block title %}Live Detection – StressNet{% endblock %}
+{% block page_title %}📷 Real-Time Multi-Face Stress Detection{% endblock %}
 
 {% block extra_head %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root {
+    --high:   #fc4949;
+    --medium: #f6ad55;
+    --low:    #68d391;
+    --card:   rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+}
+.face-card {
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 10px;
+    border: 2px solid var(--border);
+    transition: all 0.3s ease;
+    animation: fadeIn 0.3s ease;
+}
+@keyframes fadeIn {
+    from { opacity:0; transform:translateY(8px); }
+    to   { opacity:1; transform:translateY(0);   }
+}
+.face-card.high   { background:rgba(252,73,73,0.1);   border-color:var(--high);   }
+.face-card.medium { background:rgba(246,173,85,0.1);  border-color:var(--medium); }
+.face-card.low    { background:rgba(104,211,145,0.1); border-color:var(--low);    }
+.emotion-bar-wrap { margin-bottom:6px; }
+.emotion-bar-bg   {
+    background:rgba(255,255,255,0.08);
+    border-radius:4px; height:7px; margin-top:3px;
+}
+.emotion-bar-fill {
+    height:7px; border-radius:4px;
+    transition: width 0.4s ease;
+}
+.fps-badge {
+    font-size:11px; padding:2px 8px;
+    border-radius:8px; background:rgba(102,126,234,0.2);
+    color:#667eea; font-weight:600;
+}
+.stat-box {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:10px; padding:12px; text-align:center;
+}
+.live-dot {
+    display:inline-block; width:8px; height:8px;
+    border-radius:50%; background:#68d391;
+    animation: blink 1s infinite;
+    margin-right:5px;
+}
+@keyframes blink {
+    0%,100%{ opacity:1; } 50%{ opacity:0.2; }
+}
+.no-face-msg {
+    text-align:center; padding:50px 20px; color:#718096;
+}
+select, button {
+    cursor:pointer;
+}
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="grid-2">
-    <!-- Camera Feed -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+<!-- LEFT: Camera -->
+<div>
     <div class="card">
         <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
             <span>📹 Camera Feed</span>
-            <span id="statusBadge" style="font-size:11px;padding:3px 10px;border-radius:10px;background:rgba(252,73,73,.15);color:var(--high);">
-                ● OFFLINE
-            </span>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <span class="fps-badge" id="fpsBadge">0 FPS</span>
+                <span id="faceCountBadge" style="font-size:12px;padding:3px 10px;border-radius:10px;
+                      background:rgba(102,126,234,0.15);color:#667eea;">0 Faces</span>
+                <span id="statusBadge" style="font-size:11px;padding:3px 10px;border-radius:10px;
+                      background:rgba(252,73,73,0.15);color:#fc4949;">● OFFLINE</span>
+            </div>
         </div>
 
-        <div style="position:relative;background:#000;border-radius:10px;overflow:hidden;min-height:300px;display:flex;align-items:center;justify-content:center;">
+        <!-- Video Container -->
+        <div style="position:relative;background:#000;border-radius:10px;
+                    overflow:hidden;aspect-ratio:4/3;">
             <video id="rawVideo" autoplay muted playsinline
-                   style="width:100%;display:block;border-radius:10px;"></video>
-            <img id="annotatedFrame"
-                 style="width:100%;position:absolute;top:0;left:0;display:none;border-radius:10px;"
-                 alt="Annotated" />
-            <div id="cameraPlaceholder" style="color:var(--text-muted);text-align:center;padding:40px;">
-                <div style="font-size:48px;margin-bottom:12px;">📷</div>
-                <div>Click Start Camera to begin</div>
+                   style="width:100%;height:100%;object-fit:cover;display:block;"></video>
+            <img id="annotatedFrame" alt="Annotated"
+                 style="width:100%;height:100%;object-fit:cover;
+                        position:absolute;top:0;left:0;display:none;"/>
+            <div id="cameraPlaceholder"
+                 style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+                        text-align:center;color:#718096;">
+                <div style="font-size:52px;margin-bottom:10px;">📷</div>
+                <div style="font-size:15px;font-weight:600;">Click Start Camera</div>
+                <div style="font-size:12px;margin-top:5px;">Supports multiple faces</div>
             </div>
         </div>
 
         <!-- Controls -->
-        <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;">
-            <button id="startBtn" class="btn btn-primary" onclick="startCamera()">▶ Start Camera</button>
-            <button id="stopBtn" class="btn btn-danger" onclick="stopCamera()" disabled>⏹ Stop</button>
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-                <input type="checkbox" id="showAnnotated" checked style="accent-color:var(--primary);"> Show Annotations
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center;">
+            <button id="startBtn" class="btn btn-primary" onclick="startCamera()">▶ Start</button>
+            <button id="stopBtn"  class="btn btn-danger"  onclick="stopCamera()" disabled>⏹ Stop</button>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+                <input type="checkbox" id="showAnnotated" checked style="accent-color:#667eea;">
+                Annotated
+            </label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+                Speed:
+                <select id="intervalSelect" onchange="updateInterval()"
+                        style="background:#1a1a3e;color:#e2e8f0;
+                               border:1px solid var(--border);
+                               border-radius:6px;padding:3px 8px;font-size:12px;">
+                    <option value="300">Fast (0.3s)</option>
+                    <option value="500">Quick (0.5s)</option>
+                    <option value="1000" selected>Normal (1s)</option>
+                    <option value="2000">Slow (2s)</option>
+                </select>
             </label>
         </div>
-        <div id="fpsDisplay" style="margin-top:8px;font-size:12px;color:var(--text-muted);">
-            Status: Waiting...
+        <div id="statusText" style="margin-top:6px;font-size:11px;color:#718096;">
+            Status: Ready
         </div>
     </div>
 
-    <!-- Live Results -->
-    <div>
-        <!-- Current Detection -->
-        <div class="card" style="margin-bottom:16px;">
-            <div class="card-title">⚡ Current Detection</div>
-            <div id="noFace" style="text-align:center;padding:30px;color:var(--text-muted);">
-                <div style="font-size:36px;margin-bottom:8px;">👤</div>
-                No face detected
-            </div>
-            <div id="faceResult" style="display:none;">
-                <div id="stressBanner" style="border-radius:10px;padding:16px;text-align:center;margin-bottom:16px;">
-                    <div id="stressLevel" style="font-size:26px;font-weight:800;"></div>
-                    <div id="emotionLabel" style="font-size:14px;color:var(--text-muted);margin-top:4px;"></div>
-                </div>
-                <div id="emotionBars"></div>
-            </div>
+    <!-- Stats Row -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px;">
+        <div class="stat-box">
+            <div style="font-size:10px;color:#718096;margin-bottom:3px;">FRAMES</div>
+            <div style="font-size:22px;font-weight:700;" id="statFrames">0</div>
         </div>
+        <div class="stat-box">
+            <div style="font-size:10px;color:var(--high);margin-bottom:3px;">HIGH</div>
+            <div style="font-size:22px;font-weight:700;color:var(--high);" id="statHigh">0</div>
+        </div>
+        <div class="stat-box">
+            <div style="font-size:10px;color:var(--medium);margin-bottom:3px;">MEDIUM</div>
+            <div style="font-size:22px;font-weight:700;color:var(--medium);" id="statMedium">0</div>
+        </div>
+        <div class="stat-box">
+            <div style="font-size:10px;color:var(--low);margin-bottom:3px;">LOW</div>
+            <div style="font-size:22px;font-weight:700;color:var(--low);" id="statLow">0</div>
+        </div>
+    </div>
 
-        <!-- Timeline Chart -->
-        <div class="card">
-            <div class="card-title">📊 Live Stress Timeline</div>
-            <canvas id="liveChart" height="160"></canvas>
+    <!-- Timeline Chart -->
+    <div class="card" style="margin-top:12px;">
+        <div class="card-title" style="font-size:13px;">
+            📈 Stress Timeline
         </div>
+        <canvas id="timelineChart" height="110"></canvas>
     </div>
 </div>
 
-<!-- Session Stats -->
-<div class="stats-grid" style="margin-top:24px;">
-    <div class="stat-card info"><div class="stat-label">Frames Analyzed</div><div class="stat-value" id="statFrames">0</div></div>
-    <div class="stat-card danger"><div class="stat-label">High Stress</div><div class="stat-value" id="statHigh">0</div></div>
-    <div class="stat-card warning"><div class="stat-label">Medium Stress</div><div class="stat-value" id="statMedium">0</div></div>
-    <div class="stat-card success"><div class="stat-label">Low Stress</div><div class="stat-value" id="statLow">0</div></div>
+<!-- RIGHT: Face Results -->
+<div>
+    <div class="card" style="min-height:420px;">
+        <div class="card-title" style="display:flex;justify-content:space-between;">
+            <span>👥 Detected Faces</span>
+            <span id="processingBadge"
+                  style="font-size:11px;padding:2px 8px;border-radius:8px;
+                  background:rgba(255,193,7,0.15);color:#ffc107;display:none;">
+                ⚡ Analyzing...
+            </span>
+        </div>
+        <div id="noFaceMsg" class="no-face-msg">
+            <div style="font-size:44px;margin-bottom:10px;">🙂</div>
+            <div style="font-size:14px;font-weight:600;">No faces detected</div>
+            <div style="font-size:12px;margin-top:5px;">
+                Start camera and face the webcam
+            </div>
+        </div>
+        <div id="facesContainer"></div>
+    </div>
+
+    <!-- Emotion Distribution -->
+    <div class="card" style="margin-top:12px;">
+        <div class="card-title" style="font-size:13px;">🎭 Session Emotions</div>
+        <canvas id="emotionChart" height="160"></canvas>
+    </div>
+</div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-const CSRFTOKEN = '{{ csrf_token }}';
-let stream = null;
-let detecting = false;
-let intervalId = null;
-let stats = { frames: 0, high: 0, medium: 0, low: 0 };
+const CSRF = '{{ csrf_token }}';
 
-// ── Live Chart ──────────────────────────────────────
-const chartData = {
+// State
+let stream      = null;
+let detecting   = false;
+let intervalId  = null;
+let currentMs   = 1000;
+let processing  = false;
+let lastTime    = Date.now();
+let fpsHistory  = [];
+
+let stats = { frames:0, high:0, medium:0, low:0 };
+let emotionCounts = {
+    angry:0, disgusted:0, fearful:0,
+    happy:0, neutral:0, sad:0, surprised:0
+};
+
+// ── Timeline Chart ────────────────────────────────────
+const tlCtx  = document.getElementById('timelineChart').getContext('2d');
+const tlData = {
     labels: [],
     datasets: [{
         label: 'Stress',
         data: [],
         borderColor: '#667eea',
-        backgroundColor: 'rgba(102,126,234,0.12)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 4,
-        pointBackgroundColor: []
+        backgroundColor: ctx => {
+            const g = ctx.chart.ctx.createLinearGradient(0,0,0,200);
+            g.addColorStop(0, 'rgba(102,126,234,0.3)');
+            g.addColorStop(1, 'rgba(102,126,234,0)');
+            return g;
+        },
+        fill: true, tension: 0.4,
+        pointRadius: 5,
+        pointBackgroundColor: [],
+        pointBorderColor: '#fff',
+        pointBorderWidth: 1.5,
     }]
 };
-
-const liveChart = new Chart(
-    document.getElementById('liveChart').getContext('2d'), {
-    type: 'line',
-    data: chartData,
+const timelineChart = new Chart(tlCtx, {
+    type: 'line', data: tlData,
     options: {
-        responsive: true,
-        animation: false,
-        plugins: { legend: { display: false } },
+        responsive: true, animation: false,
+        plugins: { legend: { display:false } },
         scales: {
             y: {
-                min: 0, max: 4,
+                min:0, max:4,
                 ticks: {
                     color: '#a0aec0',
-                    callback: v => ['','Low','Medium','High',''][v]
+                    callback: v => (['','Low','Med','High',''][v]||'')
                 },
-                grid: { color: '#2d2d5e' }
+                grid: { color:'rgba(255,255,255,0.05)' }
             },
             x: {
-                ticks: { color: '#a0aec0', maxRotation: 45 },
-                grid: { display: false }
+                ticks: { color:'#a0aec0', maxTicksLimit:8, maxRotation:0 },
+                grid: { display:false }
             }
         }
     }
 });
 
-function addChartPoint(label, stress) {
-    const val = stress==='High'?3:stress==='Medium'?2:1;
-    const color = stress==='High'?'#fc4949':stress==='Medium'?'#f6ad55':'#68d391';
-    if (chartData.labels.length > 20) {
-        chartData.labels.shift();
-        chartData.datasets[0].data.shift();
-        chartData.datasets[0].pointBackgroundColor.shift();
+// ── Emotion Chart ─────────────────────────────────────
+const emCtx   = document.getElementById('emotionChart').getContext('2d');
+const emChart = new Chart(emCtx, {
+    type: 'doughnut',
+    data: {
+        labels: ['Angry','Disgusted','Fearful','Happy','Neutral','Sad','Surprised'],
+        datasets: [{
+            data: [1,1,1,1,1,1,1],
+            backgroundColor: [
+                '#fc4949','#c53030','#e67e22',
+                '#68d391','#3182ce','#d69e2e','#805ad5'
+            ],
+            borderWidth: 2,
+            borderColor: '#13132b'
+        }]
+    },
+    options: {
+        responsive: true, animation: false,
+        plugins: {
+            legend: {
+                position: 'right',
+                labels: {
+                    color:'#e2e8f0',
+                    font:{ size:11 },
+                    padding:8,
+                    usePointStyle: true,
+                }
+            }
+        }
     }
-    chartData.labels.push(label);
-    chartData.datasets[0].data.push(val);
-    chartData.datasets[0].pointBackgroundColor.push(color);
-    liveChart.update();
-}
+});
 
-// ── Camera Control ──────────────────────────────────
+// ── Camera ────────────────────────────────────────────
 async function startCamera() {
     try {
         stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 320, height: 240 }
+            video: {
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+                facingMode: 'user',
+                frameRate: { ideal: 30 }
+            }
         });
         const video = document.getElementById('rawVideo');
         video.srcObject = stream;
         document.getElementById('cameraPlaceholder').style.display = 'none';
-        document.getElementById('statusBadge').textContent = '● LIVE';
-        document.getElementById('statusBadge').style.color = 'var(--low)';
-        document.getElementById('statusBadge').style.background = 'rgba(104,211,145,.15)';
         document.getElementById('startBtn').disabled = true;
-        document.getElementById('stopBtn').disabled = false;
+        document.getElementById('stopBtn').disabled  = false;
+        setStatus('LIVE', '#68d391', 'rgba(104,211,145,0.15)');
         detecting = true;
-        // Send frame every 3 seconds for smooth camera
-        intervalId = setInterval(captureAndSend, 1000);
-        document.getElementById('fpsDisplay').textContent = 'Status: Running - analyzing every 3 seconds';
+        startDetection();
     } catch(e) {
-        alert('Camera access denied: ' + e.message);
+        alert('Camera error: ' + e.message +
+              '\nMake sure you are using Chrome or Edge browser.');
     }
 }
 
@@ -166,128 +305,227 @@ function stopCamera() {
     detecting = false;
     clearInterval(intervalId);
     if (stream) stream.getTracks().forEach(t => t.stop());
-    document.getElementById('rawVideo').srcObject = null;
-    document.getElementById('statusBadge').textContent = '● OFFLINE';
-    document.getElementById('statusBadge').style.color = 'var(--high)';
-    document.getElementById('statusBadge').style.background = 'rgba(252,73,73,.15)';
-    document.getElementById('startBtn').disabled = false;
-    document.getElementById('stopBtn').disabled = true;
+    const video = document.getElementById('rawVideo');
+    video.srcObject = null;
     document.getElementById('annotatedFrame').style.display = 'none';
-    document.getElementById('rawVideo').style.display = 'block';
-    document.getElementById('fpsDisplay').textContent = 'Status: Stopped';
+    video.style.display = 'block';
+    document.getElementById('cameraPlaceholder').style.display = 'block';
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled  = true;
+    document.getElementById('facesContainer').innerHTML = '';
+    document.getElementById('noFaceMsg').style.display = 'block';
+    document.getElementById('faceCountBadge').textContent = '0 Faces';
+    document.getElementById('fpsBadge').textContent = '0 FPS';
+    setStatus('OFFLINE', '#fc4949', 'rgba(252,73,73,0.15)');
+    document.getElementById('statusText').textContent = 'Status: Stopped';
 }
 
-// ── Capture and Send Frame ──────────────────────────
-function captureAndSend() {
+function startDetection() {
+    clearInterval(intervalId);
+    intervalId = setInterval(captureAndDetect, currentMs);
+    document.getElementById('statusText').textContent =
+        `Status: Running — detecting every ${currentMs}ms`;
+}
+
+function updateInterval() {
+    currentMs = parseInt(document.getElementById('intervalSelect').value);
+    if (detecting) startDetection();
+}
+
+function setStatus(text, color, bg) {
+    const b = document.getElementById('statusBadge');
+    b.textContent = `● ${text}`;
+    b.style.color = color;
+    b.style.background = bg;
+}
+
+// ── Capture & Detect ──────────────────────────────────
+function captureAndDetect() {
+    if (!detecting || processing) return;
     const video = document.getElementById('rawVideo');
-    if (!video.videoWidth) return;
+    if (!video.videoWidth || !video.videoHeight) return;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = 480;
-    canvas.height = 360;
-    canvas.getContext('2d').drawImage(video, 0, 0, 320, 240);
+    processing = true;
+    document.getElementById('processingBadge').style.display = 'inline';
 
-    // Compress image more for faster transfer
-    const frameB64 = canvas.toDataURL('image/jpeg', 0.4);
+    // Capture frame to canvas
+    const canvas  = document.createElement('canvas');
+    canvas.width  = 640;
+    canvas.height = 480;
+    canvas.getContext('2d').drawImage(video, 0, 0, 640, 480);
 
-    document.getElementById('fpsDisplay').textContent = 'Status: Analyzing...';
+    // Compress to JPEG
+    const frameB64 = canvas.toDataURL('image/jpeg', 0.55);
 
     fetch("{% url 'live_frame' %}", {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRFToken': CSRFTOKEN
+            'X-CSRFToken': CSRF
         },
         body: JSON.stringify({ frame: frameB64 })
     })
     .then(r => r.json())
     .then(data => {
-        document.getElementById('fpsDisplay').textContent =
-            'Status: Running - Last analyzed: ' + new Date().toLocaleTimeString();
+        processing = false;
+        document.getElementById('processingBadge').style.display = 'none';
+
+        // Calculate FPS
+        const now  = Date.now();
+        const diff = (now - lastTime) / 1000;
+        lastTime   = now;
+        const fps  = Math.round(1 / diff);
+        fpsHistory.push(fps);
+        if (fpsHistory.length > 5) fpsHistory.shift();
+        const avgFps = Math.round(fpsHistory.reduce((a,b)=>a+b,0)/fpsHistory.length);
+        document.getElementById('fpsBadge').textContent = `${avgFps} FPS`;
+        document.getElementById('statusText').textContent =
+            `Status: ● Running | Last: ${new Date().toLocaleTimeString()}`;
 
         if (data.error) {
-            showNoFace('⚠️ ' + data.error);
+            console.error('Detection error:', data.error);
             return;
         }
+
+        // Show annotated frame
+        const showAnnotated = document.getElementById('showAnnotated').checked;
+        const annotatedEl   = document.getElementById('annotatedFrame');
+        const rawEl         = document.getElementById('rawVideo');
+
+        if (showAnnotated && data.annotated_frame) {
+            annotatedEl.src           = data.annotated_frame;
+            annotatedEl.style.display = 'block';
+            rawEl.style.display       = 'none';
+        } else {
+            annotatedEl.style.display = 'none';
+            rawEl.style.display       = 'block';
+        }
+
+        const results = data.results || [];
+        document.getElementById('faceCountBadge').textContent =
+            `${results.length} Face${results.length !== 1 ? 's' : ''}`;
 
         stats.frames++;
         document.getElementById('statFrames').textContent = stats.frames;
 
-        // Show annotated frame
-        if (document.getElementById('showAnnotated').checked && data.annotated_frame) {
-            document.getElementById('annotatedFrame').src = data.annotated_frame;
-            document.getElementById('annotatedFrame').style.display = 'block';
-            document.getElementById('rawVideo').style.display = 'none';
-        }
-
-        if (data.face_count === 0) {
-            showNoFace();
+        if (results.length === 0) {
+            document.getElementById('noFaceMsg').style.display = 'block';
+            document.getElementById('facesContainer').innerHTML = '';
             return;
         }
 
-        const r = data.results[0];
-        updateResultPanel(r);
-        addChartPoint(new Date().toLocaleTimeString(), r.stress_level);
+        document.getElementById('noFaceMsg').style.display = 'none';
+        renderFaces(results);
 
-        if (r.stress_level === 'High') stats.high++;
-        else if (r.stress_level === 'Medium') stats.medium++;
-        else stats.low++;
+        // Update stats
+        let stressSum = 0;
+        results.forEach(r => {
+            const sv = r.stress_level==='High' ? 3 :
+                       r.stress_level==='Medium' ? 2 : 1;
+            stressSum += sv;
+            if (r.stress_level === 'High')   stats.high++;
+            else if (r.stress_level==='Medium') stats.medium++;
+            else stats.low++;
+            if (emotionCounts.hasOwnProperty(r.emotion))
+                emotionCounts[r.emotion]++;
+        });
 
-        document.getElementById('statHigh').textContent = stats.high;
+        const avg  = stressSum / results.length;
+        const avgL = avg >= 2.5 ? 'High' : avg >= 1.5 ? 'Medium' : 'Low';
+
+        document.getElementById('statHigh').textContent   = stats.high;
         document.getElementById('statMedium').textContent = stats.medium;
-        document.getElementById('statLow').textContent = stats.low;
+        document.getElementById('statLow').textContent    = stats.low;
+
+        addTimelinePoint(avgL, Math.round(avg * 10) / 10);
+        updateEmotionChart();
     })
     .catch(e => {
-        document.getElementById('fpsDisplay').textContent = 'Status: Error - ' + e.message;
+        processing = false;
+        document.getElementById('processingBadge').style.display = 'none';
+        console.warn('Fetch error:', e);
     });
 }
 
-function showNoFace(msg) {
-    document.getElementById('noFace').style.display = 'block';
-    document.getElementById('faceResult').style.display = 'none';
-    if (msg) {
-        document.getElementById('noFace').innerHTML =
-            `<div style="font-size:14px;color:var(--medium);">${msg}</div>`;
-    } else {
-        document.getElementById('noFace').innerHTML =
-            `<div style="font-size:36px;margin-bottom:8px;">👤</div>No face detected`;
+// ── Timeline Chart Update ─────────────────────────────
+function addTimelinePoint(stressLabel, stressVal) {
+    const color = stressLabel === 'High'   ? '#fc4949' :
+                  stressLabel === 'Medium' ? '#f6ad55' : '#68d391';
+    const time  = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+    if (tlData.labels.length >= 30) {
+        tlData.labels.shift();
+        tlData.datasets[0].data.shift();
+        tlData.datasets[0].pointBackgroundColor.shift();
     }
+    tlData.labels.push(time);
+    tlData.datasets[0].data.push(stressVal);
+    tlData.datasets[0].pointBackgroundColor.push(color);
+    timelineChart.update('none');
 }
 
-function updateResultPanel(r) {
-    document.getElementById('noFace').style.display = 'none';
-    document.getElementById('faceResult').style.display = 'block';
+// ── Emotion Chart Update ──────────────────────────────
+function updateEmotionChart() {
+    emChart.data.datasets[0].data = Object.values(emotionCounts);
+    emChart.update('none');
+}
 
-    const colors = {
-        High:   ['rgba(252,73,73,.15)',   'var(--high)'],
-        Medium: ['rgba(246,173,85,.15)',  'var(--medium)'],
-        Low:    ['rgba(104,211,145,.15)', 'var(--low)']
+// ── Render Face Cards ─────────────────────────────────
+function renderFaces(results) {
+    const container = document.getElementById('facesContainer');
+    const clsMap    = { High:'high', Medium:'medium', Low:'low' };
+    const emojiMap  = { High:'🔴', Medium:'🟡', Low:'🟢' };
+    const colorMap  = {
+        High:   'var(--high)',
+        Medium: 'var(--medium)',
+        Low:    'var(--low)'
     };
-    const [bg, col] = colors[r.stress_level];
-    const banner = document.getElementById('stressBanner');
-    banner.style.background = bg;
-    banner.style.border = `2px solid ${col}`;
 
-    const emoji = r.stress_level==='High'?'🔴':r.stress_level==='Medium'?'🟡':'🟢';
-    document.getElementById('stressLevel').textContent = `${emoji} ${r.stress_level} Stress`;
-    document.getElementById('stressLevel').style.color = col;
-    document.getElementById('emotionLabel').textContent =
-        `${r.emotion.toUpperCase()} | ${r.confidence.toFixed(1)}% confidence`;
+    container.innerHTML = results.map((r, idx) => {
+        const cls   = clsMap[r.stress_level];
+        const color = colorMap[r.stress_level];
+        const emoji = emojiMap[r.stress_level];
 
-    // Emotion bars
-    document.getElementById('emotionBars').innerHTML =
-        Object.entries(r.scores).map(([em, sc]) => `
-        <div style="margin-bottom:8px;">
-            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
-                <span style="text-transform:capitalize;">${em}</span>
-                <span>${sc.toFixed(1)}%</span>
+        const bars = Object.entries(r.scores || {})
+            .sort((a,b) => b[1] - a[1])
+            .map(([em, sc]) => {
+                const isTop  = em === r.emotion;
+                const barCol = isTop ? color : 'rgba(255,255,255,0.2)';
+                return `
+                <div class="emotion-bar-wrap">
+                    <div style="display:flex;justify-content:space-between;
+                                font-size:10.5px;color:${isTop?color:'#a0aec0'};">
+                        <span style="text-transform:capitalize;
+                                     font-weight:${isTop?'700':'400'};">${em}</span>
+                        <span>${Number(sc).toFixed(1)}%</span>
+                    </div>
+                    <div class="emotion-bar-bg">
+                        <div class="emotion-bar-fill"
+                             style="width:${Math.min(sc,100)}%;background:${barCol};"></div>
+                    </div>
+                </div>`;
+            }).join('');
+
+        return `
+        <div class="face-card ${cls}">
+            <div style="display:flex;justify-content:space-between;
+                        align-items:center;margin-bottom:10px;">
+                <div style="font-weight:700;font-size:14px;">
+                    ${emoji} Face ${idx+1}
+                    <span style="color:${color};margin-left:6px;font-size:13px;">
+                        ${r.stress_level} Stress
+                    </span>
+                </div>
+                <div style="font-size:11px;color:#718096;text-align:right;">
+                    <div style="font-weight:600;color:${color};">
+                        ${r.emotion.charAt(0).toUpperCase()+r.emotion.slice(1)}
+                    </div>
+                    <div>${Number(r.confidence).toFixed(1)}% conf.</div>
+                </div>
             </div>
-            <div class="emotion-bar">
-                <div class="emotion-bar-fill"
-                     style="width:${sc}%;
-                     background:${em===r.emotion?'var(--primary)':'var(--text-muted)'};"></div>
-            </div>
-        </div>`).join('');
+            ${bars}
+        </div>`;
+    }).join('');
 }
 </script>
 {% endblock %}

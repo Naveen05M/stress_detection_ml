@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Dashboard – StressNet</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',sans-serif;background:#0d0d2b;color:#e2e8f0;}
+.layout{display:flex;min-height:100vh;}
+/* Sidebar */
+.sidebar{
+    width:220px;background:rgba(255,255,255,0.03);
+    border-right:1px solid rgba(255,255,255,0.08);
+    display:flex;flex-direction:column;
+    position:fixed;top:0;left:0;height:100vh;
+}
+.sidebar-logo{padding:22px 18px 18px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.brand{font-size:18px;font-weight:800;
+    background:linear-gradient(90deg,#667eea,#764ba2);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.nav-item{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 18px;margin:2px 8px;
+    border-radius:9px;font-size:13px;color:#a0aec0;
+    text-decoration:none;transition:all 0.2s;
+}
+.nav-item:hover{background:rgba(255,255,255,0.06);color:#e2e8f0;}
+.nav-item.active{background:rgba(102,126,234,0.15);color:#667eea;font-weight:600;}
+.sidebar-footer{
+    margin-top:auto;padding:14px 18px;
+    border-top:1px solid rgba(255,255,255,0.08);
+}
+/* Main */
+.main{margin-left:220px;flex:1;}
+.topbar{
+    background:rgba(255,255,255,0.02);
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    padding:14px 24px;display:flex;
+    justify-content:space-between;align-items:center;
+    position:sticky;top:0;z-index:50;
+}
+.content{padding:24px;}
+.card{
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px;padding:20px;margin-bottom:16px;
+}
+.card-title{font-size:13px;font-weight:700;color:#a0aec0;
+    text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.stat-box{
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:12px;padding:16px;text-align:center;
+}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+</style>
+</head>
+<body>
+<div class="layout">
+<!-- Sidebar -->
+<div class="sidebar">
+    <div class="sidebar-logo">
+        <div style="font-size:26px;margin-bottom:4px;">🧠</div>
+        <div class="brand">StressNet</div>
+        <div style="font-size:10px;color:#718096;margin-top:2px;">Employee Portal</div>
+    </div>
+    <div style="padding:12px;">
+        <!-- Profile card -->
+        <div style="background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.2);
+                    border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+            <div style="width:44px;height:44px;border-radius:50%;
+                        background:linear-gradient(135deg,#667eea,#764ba2);
+                        display:flex;align-items:center;justify-content:center;
+                        font-size:16px;font-weight:700;margin:0 auto 8px;">
+                {% if emp.profile_photo %}
+                <img src="{{ emp.profile_photo.url }}" alt=""
+                     style="width:44px;height:44px;border-radius:50%;object-fit:cover;">
+                {% else %}
+                {{ emp.user.first_name|slice:":1" }}{{ emp.user.last_name|slice:":1" }}
+                {% endif %}
+            </div>
+            <div style="font-size:13px;font-weight:700;">{{ emp.full_name }}</div>
+            <div style="font-size:11px;color:#718096;">{{ emp.employee_id }}</div>
+            <div style="font-size:11px;color:#667eea;">{{ emp.department }}</div>
+        </div>
+    </div>
+    <a href="{% url 'user_dashboard' %}" class="nav-item active">📊 Dashboard</a>
+    <a href="{% url 'user_live' %}"      class="nav-item">📷 Live Detection</a>
+    <a href="{% url 'user_history' %}"   class="nav-item">📋 My History</a>
+    <a href="{% url 'user_profile' %}"   class="nav-item">👤 My Profile</a>
+    <div class="sidebar-footer">
+        <div style="font-size:11px;color:#718096;margin-bottom:6px;">
+            Status: <span style="color:#68d391;">✅ Approved</span>
+        </div>
+        <a href="{% url 'logout_view' %}"
+           style="font-size:12px;color:#fc8181;text-decoration:none;">
+            🚪 Logout
+        </a>
+    </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+    <div class="topbar">
+        <div style="font-size:16px;font-weight:700;">
+            👋 Welcome back, {{ emp.user.first_name }}!
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;">
+            <a href="{% url 'user_live' %}"
+               style="padding:8px 18px;background:linear-gradient(135deg,#667eea,#764ba2);
+                      border-radius:9px;color:#fff;font-size:13px;
+                      font-weight:700;text-decoration:none;">
+                📷 Start Detection
+            </a>
+        </div>
+    </div>
+
+    <div class="content">
+        <!-- Stats -->
+        <div class="stat-grid">
+            <div class="stat-box">
+                <div style="font-size:10px;color:#718096;margin-bottom:6px;">TOTAL DETECTIONS</div>
+                <div style="font-size:30px;font-weight:800;color:#667eea;">
+                    {{ summary.total }}
+                </div>
+            </div>
+            <div class="stat-box">
+                <div style="font-size:10px;color:#fc8181;margin-bottom:6px;">HIGH STRESS</div>
+                <div style="font-size:30px;font-weight:800;color:#fc8181;">
+                    {{ summary.high }}
+                </div>
+            </div>
+            <div class="stat-box">
+                <div style="font-size:10px;color:#f6ad55;margin-bottom:6px;">MEDIUM STRESS</div>
+                <div style="font-size:30px;font-weight:800;color:#f6ad55;">
+                    {{ summary.medium }}
+                </div>
+            </div>
+            <div class="stat-box">
+                <div style="font-size:10px;color:#68d391;margin-bottom:6px;">LOW STRESS</div>
+                <div style="font-size:30px;font-weight:800;color:#68d391;">
+                    {{ summary.low }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid-2">
+            <div class="card">
+                <div class="card-title">📈 Stress Timeline</div>
+                <canvas id="timelineChart" height="160"></canvas>
+            </div>
+            <div class="card">
+                <div class="card-title">🎭 Emotion Distribution</div>
+                <canvas id="emotionChart" height="160"></canvas>
+            </div>
+        </div>
+
+        <!-- Recent Records -->
+        <div class="card">
+            <div class="card-title" style="display:flex;justify-content:space-between;">
+                <span>📋 Recent Detections</span>
+                <a href="{% url 'user_history' %}"
+                   style="font-size:11px;color:#667eea;text-decoration:none;">View All →</a>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead>
+                    <tr style="color:#718096;font-size:11px;text-transform:uppercase;">
+                        <th style="padding:8px;text-align:left;">Time</th>
+                        <th style="padding:8px;text-align:left;">Emotion</th>
+                        <th style="padding:8px;text-align:left;">Stress</th>
+                        <th style="padding:8px;text-align:left;">Confidence</th>
+                        <th style="padding:8px;text-align:left;">Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for r in records %}
+                <tr style="border-top:1px solid rgba(255,255,255,0.06);">
+                    <td style="padding:8px;color:#718096;font-size:11px;">
+                        {{ r.timestamp|date:"d M" }} {{ r.timestamp|time:"H:i:s" }}
+                    </td>
+                    <td style="padding:8px;font-weight:600;text-transform:capitalize;">
+                        {{ r.emotion }}
+                    </td>
+                    <td style="padding:8px;">
+                        <span style="padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;
+                            background:{% if r.stress_level == 'High' %}rgba(252,73,73,0.15){% elif r.stress_level == 'Medium' %}rgba(246,173,85,0.15){% else %}rgba(104,211,145,0.15){% endif %};
+                            color:{% if r.stress_level == 'High' %}#fc8181{% elif r.stress_level == 'Medium' %}#f6ad55{% else %}#68d391{% endif %};">
+                            {{ r.stress_level }}
+                        </span>
+                    </td>
+                    <td style="padding:8px;color:#a0aec0;">{{ r.confidence|floatformat:1 }}%</td>
+                    <td style="padding:8px;color:#718096;font-size:11px;">{{ r.source }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" style="padding:30px;text-align:center;color:#4a5568;">
+                        No detections yet. <a href="{% url 'user_live' %}"
+                        style="color:#667eea;">Start Live Detection →</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</div>
+
+<script>
+const timeline_data = {{ timeline|safe }};
+const emotion_data  = {{ emotion_counts|safe }};
+
+// Timeline
+const tlCtx = document.getElementById('timelineChart').getContext('2d');
+new Chart(tlCtx, {
+    type: 'line',
+    data: {
+        labels: timeline_data.map(d => d.timestamp),
+        datasets: [{
+            label: 'Stress',
+            data: timeline_data.map(d => d.stress_level==='High'?3:d.stress_level==='Medium'?2:1),
+            borderColor: '#667eea', backgroundColor: 'rgba(102,126,234,0.1)',
+            fill:true, tension:0.4, pointRadius:4,
+            pointBackgroundColor: timeline_data.map(d =>
+                d.stress_level==='High'?'#fc8181':d.stress_level==='Medium'?'#f6ad55':'#68d391'),
+            pointBorderColor: '#0d0d2b', pointBorderWidth: 1.5,
+        }]
+    },
+    options: {
+        responsive:true, animation:false,
+        plugins:{ legend:{display:false} },
+        scales:{
+            y:{ min:0, max:4,
+                ticks:{ color:'#a0aec0', callback:v=>(['','Low','Med','High',''][v]||'') },
+                grid:{ color:'rgba(255,255,255,0.05)' } },
+            x:{ ticks:{ color:'#a0aec0', maxTicksLimit:6, maxRotation:0 },
+                grid:{ display:false } }
+        }
+    }
+});
+
+// Emotion Doughnut
+const emCtx = document.getElementById('emotionChart').getContext('2d');
+new Chart(emCtx, {
+    type: 'doughnut',
+    data: {
+        labels: Object.keys(emotion_data).map(k=>k.charAt(0).toUpperCase()+k.slice(1)),
+        datasets: [{
+            data: Object.values(emotion_data),
+            backgroundColor: ['#fc8181','#c53030','#f6ad55','#68d391','#63b3ed','#f6e05e','#b794f4'],
+            borderWidth:2, borderColor:'#0d0d2b'
+        }]
+    },
+    options:{
+        responsive:true, animation:false,
+        plugins:{ legend:{ position:'right', labels:{ color:'#e2e8f0', font:{size:11}, padding:8, usePointStyle:true } } }
+    }
+});
+</script>
+</body>
+</html>

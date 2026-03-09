@@ -1,0 +1,352 @@
+{% extends 'stress_app/admin_base.html' %}
+{% block title %}{{ emp.full_name }} - Detail{% endblock %}
+{% block page_title %}Employee Detail{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+
+<!-- Back Button -->
+<div style="margin-bottom:20px;">
+    <a href="{% url 'admin_employees' %}" style="color:#a0aec0;text-decoration:none;font-size:13px;">
+        &larr; Back to Employees
+    </a>
+</div>
+
+<!-- Top Profile Card -->
+<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;margin-bottom:20px;">
+    <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+
+        <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:#fff;flex-shrink:0;">
+            {% if emp.profile_photo %}
+                <img src="{{ emp.profile_photo.url }}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;" alt="">
+            {% else %}
+                {{ emp.user.first_name|slice:":1" }}{{ emp.user.last_name|slice:":1" }}
+            {% endif %}
+        </div>
+
+        <div style="flex:1;">
+            <div style="font-size:22px;font-weight:800;color:#e2e8f0;margin-bottom:4px;">{{ emp.full_name }}</div>
+            <div style="font-size:13px;color:#a0aec0;margin-bottom:8px;">{{ emp.designation|default:"Employee" }} &bull; {{ emp.department }}</div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                <span style="font-size:12px;color:#667eea;background:rgba(102,126,234,0.15);padding:3px 10px;border-radius:10px;">ID: {{ emp.employee_id }}</span>
+                {% if emp.status == "approved" %}
+                    <span style="font-size:12px;color:#68d391;background:rgba(104,211,145,0.15);padding:3px 10px;border-radius:10px;">Approved</span>
+                {% elif emp.status == "pending" %}
+                    <span style="font-size:12px;color:#f6ad55;background:rgba(246,173,85,0.15);padding:3px 10px;border-radius:10px;">Pending</span>
+                {% else %}
+                    <span style="font-size:12px;color:#fc8181;background:rgba(252,73,73,0.15);padding:3px 10px;border-radius:10px;">Rejected</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            {% if emp.status == "pending" or emp.status == "rejected" %}
+                <a href="{% url 'admin_approve' emp.id %}" style="padding:9px 18px;background:rgba(104,211,145,0.2);color:#68d391;border:1px solid rgba(104,211,145,0.4);border-radius:9px;font-size:13px;font-weight:600;text-decoration:none;">Approve</a>
+            {% endif %}
+            {% if emp.status == "pending" or emp.status == "approved" %}
+                <button data-empid="{{ emp.id }}" onclick="openReject(this.getAttribute('data-empid'))" style="padding:9px 18px;background:rgba(252,73,73,0.2);color:#fc8181;border:1px solid rgba(252,73,73,0.4);border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;">Reject</button>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+
+<!-- Info + Summary Grid -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+
+    <!-- Personal Details -->
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:20px;">
+        <div style="font-size:12px;font-weight:700;color:#667eea;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">Personal Information</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <tr>
+                <td style="padding:7px 0;color:#718096;width:45%;">Full Name</td>
+                <td style="padding:7px 0;color:#e2e8f0;font-weight:600;">{{ emp.full_name }}</td>
+            </tr>
+            <tr style="border-top:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:7px 0;color:#718096;">Email</td>
+                <td style="padding:7px 0;color:#e2e8f0;">{{ emp.user.email }}</td>
+            </tr>
+            <tr style="border-top:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:7px 0;color:#718096;">Phone</td>
+                <td style="padding:7px 0;color:#e2e8f0;">{{ emp.phone|default:"--" }}</td>
+            </tr>
+            <tr style="border-top:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:7px 0;color:#718096;">Employee ID</td>
+                <td style="padding:7px 0;color:#667eea;font-weight:600;">{{ emp.employee_id }}</td>
+            </tr>
+            <tr style="border-top:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:7px 0;color:#718096;">Department</td>
+                <td style="padding:7px 0;color:#e2e8f0;">{{ emp.department }}</td>
+            </tr>
+            <tr style="border-top:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:7px 0;color:#718096;">Designation</td>
+                <td style="padding:7px 0;color:#e2e8f0;">{{ emp.designation|default:"--" }}</td>
+            </tr>
+            <tr style="border-top:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:7px 0;color:#718096;">Date of Joining</td>
+                <td style="padding:7px 0;color:#e2e8f0;">{{ emp.date_of_join|date:"d M Y"|default:"--" }}</td>
+            </tr>
+            <tr style="border-top:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:7px 0;color:#718096;">Registered</td>
+                <td style="padding:7px 0;color:#e2e8f0;">{{ emp.registered_at|date:"d M Y H:i" }}</td>
+            </tr>
+            {% if emp.approved_by %}
+            <tr style="border-top:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:7px 0;color:#718096;">Approved By</td>
+                <td style="padding:7px 0;color:#68d391;">{{ emp.approved_by.get_full_name|default:emp.approved_by.username }}</td>
+            </tr>
+            {% endif %}
+            {% if emp.rejection_reason %}
+            <tr style="border-top:1px solid rgba(255,255,255,0.05);">
+                <td style="padding:7px 0;color:#718096;">Reject Reason</td>
+                <td style="padding:7px 0;color:#fc8181;">{{ emp.rejection_reason }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+
+    <!-- Stress Summary -->
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:20px;">
+        <div style="font-size:12px;font-weight:700;color:#667eea;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">Stress Summary</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+            <div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:10px;color:#718096;margin-bottom:4px;">TOTAL</div>
+                <div style="font-size:28px;font-weight:800;color:#667eea;">{{ summary.total }}</div>
+            </div>
+            <div style="background:rgba(252,73,73,0.08);border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:10px;color:#fc8181;margin-bottom:4px;">HIGH</div>
+                <div style="font-size:28px;font-weight:800;color:#fc8181;">{{ summary.high }}</div>
+            </div>
+            <div style="background:rgba(246,173,85,0.08);border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:10px;color:#f6ad55;margin-bottom:4px;">MEDIUM</div>
+                <div style="font-size:28px;font-weight:800;color:#f6ad55;">{{ summary.medium }}</div>
+            </div>
+            <div style="background:rgba(104,211,145,0.08);border-radius:10px;padding:14px;text-align:center;">
+                <div style="font-size:10px;color:#68d391;margin-bottom:4px;">LOW</div>
+                <div style="font-size:28px;font-weight:800;color:#68d391;">{{ summary.low }}</div>
+            </div>
+        </div>
+        <div style="font-size:11px;color:#718096;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Emotion Distribution</div>
+        <canvas id="emotionChart" height="160"></canvas>
+    </div>
+
+</div>
+
+<!-- Timeline Chart -->
+<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;padding:20px;margin-bottom:20px;">
+    <div style="font-size:12px;font-weight:700;color:#667eea;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:14px;">Stress Timeline</div>
+    <canvas id="timelineChart" height="100"></canvas>
+</div>
+
+<!-- Detection History Table -->
+<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;overflow:hidden;">
+    <div style="padding:16px 20px;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:13px;font-weight:700;color:#e2e8f0;">Detection History</div>
+        <div style="font-size:12px;color:#718096;">{{ records|length }} records</div>
+    </div>
+    <div style="overflow:auto;">
+    <table style="width:100%;border-collapse:collapse;min-width:700px;">
+        <thead>
+            <tr style="background:rgba(102,126,234,0.08);font-size:11px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">
+                <th style="padding:12px 16px;text-align:left;">#</th>
+                <th style="padding:12px 16px;text-align:left;">Date and Time</th>
+                <th style="padding:12px 16px;text-align:left;">Emotion</th>
+                <th style="padding:12px 16px;text-align:center;">Stress Level</th>
+                <th style="padding:12px 16px;text-align:center;">Confidence</th>
+                <th style="padding:12px 16px;text-align:center;">Source</th>
+                <th style="padding:12px 16px;text-align:center;">All Scores</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for r in records %}
+        <tr style="border-top:1px solid rgba(255,255,255,0.05);"
+            onmouseover="this.style.background='rgba(255,255,255,0.02)'"
+            onmouseout="this.style.background='transparent'">
+
+            <td style="padding:11px 16px;color:#4a5568;font-size:12px;">{{ forloop.counter }}</td>
+
+            <td style="padding:11px 16px;font-size:12px;color:#a0aec0;">
+                {{ r.timestamp|date:"d M Y" }}<br>
+                <span style="color:#718096;">{{ r.timestamp|time:"H:i:s" }}</span>
+            </td>
+
+            <td style="padding:11px 16px;font-size:13px;font-weight:600;color:#e2e8f0;text-transform:capitalize;">
+                {{ r.emotion }}
+            </td>
+
+            <td style="padding:11px 16px;text-align:center;">
+                {% if r.stress_level == "High" %}
+                    <span style="background:rgba(252,73,73,0.15);color:#fc8181;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;">High</span>
+                {% elif r.stress_level == "Medium" %}
+                    <span style="background:rgba(246,173,85,0.15);color:#f6ad55;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;">Medium</span>
+                {% else %}
+                    <span style="background:rgba(104,211,145,0.15);color:#68d391;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;">Low</span>
+                {% endif %}
+            </td>
+
+            <td style="padding:11px 16px;text-align:center;font-size:13px;color:#a0aec0;">
+                {{ r.confidence|floatformat:1 }}%
+            </td>
+
+            <td style="padding:11px 16px;text-align:center;">
+                <span style="background:rgba(255,255,255,0.07);color:#a0aec0;padding:2px 8px;border-radius:8px;font-size:11px;">{{ r.source }}</span>
+            </td>
+
+            <td style="padding:11px 16px;">
+                <div style="font-size:10px;color:#718096;line-height:1.9;">
+                    <span style="color:#fc8181;">Angry {{ r.angry_score|floatformat:0 }}%</span>&nbsp;
+                    <span style="color:#68d391;">Happy {{ r.happy_score|floatformat:0 }}%</span>&nbsp;
+                    <span style="color:#63b3ed;">Neutral {{ r.neutral_score|floatformat:0 }}%</span><br>
+                    <span style="color:#f6e05e;">Sad {{ r.sad_score|floatformat:0 }}%</span>&nbsp;
+                    <span style="color:#f6ad55;">Fear {{ r.fearful_score|floatformat:0 }}%</span>&nbsp;
+                    <span style="color:#b794f4;">Surprise {{ r.surprised_score|floatformat:0 }}%</span>
+                </div>
+            </td>
+
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="7" style="padding:40px;text-align:center;color:#4a5568;">No detection records yet</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<!-- Reject Modal -->
+<div id="rejectModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:#1a1a4e;border:1px solid rgba(255,255,255,0.12);border-radius:16px;padding:30px;width:440px;max-width:90vw;">
+        <h3 style="color:#fc8181;margin-bottom:8px;font-size:17px;">Reject Employee</h3>
+        <p style="color:#a0aec0;font-size:13px;margin-bottom:16px;">Enter reason for rejection (optional)</p>
+        <form id="rejectForm" method="POST" action="">
+            {% csrf_token %}
+            <textarea name="reason" rows="4" placeholder="Reason for rejection..."
+                      style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#e2e8f0;padding:12px;font-size:13px;font-family:inherit;resize:vertical;outline:none;box-sizing:border-box;"></textarea>
+            <div style="display:flex;gap:10px;margin-top:14px;">
+                <button type="submit" style="flex:1;padding:11px;background:rgba(252,73,73,0.8);border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Confirm Reject</button>
+                <button type="button" onclick="closeReject()" style="flex:1;padding:11px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#a0aec0;font-size:13px;cursor:pointer;">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Data for charts stored in hidden elements -->
+<div id="timelineData" style="display:none;">{{ timeline|safe }}</div>
+<div id="emotionData"  style="display:none;">{{ emotion_counts|safe }}</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Reject Modal
+function openReject(empId) {
+    document.getElementById('rejectModal').style.display = 'flex';
+    document.getElementById('rejectForm').action = '/admin-panel/employees/' + empId + '/reject/';
+}
+function closeReject() {
+    document.getElementById('rejectModal').style.display = 'none';
+}
+window.addEventListener('click', function(e) {
+    if (e.target === document.getElementById('rejectModal')) { closeReject(); }
+});
+
+// Read chart data safely from hidden divs
+var tlData = [];
+var emData = {};
+try {
+    tlData = JSON.parse(document.getElementById('timelineData').textContent || '[]');
+} catch(e) { tlData = []; }
+try {
+    emData = JSON.parse(document.getElementById('emotionData').textContent || '{}');
+} catch(e) { emData = {}; }
+
+// Timeline Chart
+var tlCtx = document.getElementById('timelineChart').getContext('2d');
+new Chart(tlCtx, {
+    type: 'line',
+    data: {
+        labels: tlData.map(function(d) { return d.timestamp; }),
+        datasets: [{
+            label: 'Stress',
+            data: tlData.map(function(d) {
+                return d.stress_level === 'High' ? 3 : d.stress_level === 'Medium' ? 2 : 1;
+            }),
+            borderColor: '#667eea',
+            backgroundColor: 'rgba(102,126,234,0.1)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 5,
+            pointBackgroundColor: tlData.map(function(d) {
+                return d.stress_level === 'High' ? '#fc8181' : d.stress_level === 'Medium' ? '#f6ad55' : '#68d391';
+            }),
+            pointBorderColor: '#0d0d2b',
+            pointBorderWidth: 1.5
+        }]
+    },
+    options: {
+        responsive: true,
+        animation: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: {
+                min: 0, max: 4,
+                ticks: {
+                    color: '#a0aec0',
+                    callback: function(v) {
+                        var labels = ['', 'Low', 'Medium', 'High', ''];
+                        return labels[v] || '';
+                    }
+                },
+                grid: { color: 'rgba(255,255,255,0.05)' }
+            },
+            x: {
+                ticks: { color: '#a0aec0', maxTicksLimit: 8, maxRotation: 0 },
+                grid: { display: false }
+            }
+        }
+    }
+});
+
+// Emotion Doughnut Chart
+var emCtx = document.getElementById('emotionChart').getContext('2d');
+new Chart(emCtx, {
+    type: 'doughnut',
+    data: {
+        labels: ['Angry', 'Disgusted', 'Fearful', 'Happy', 'Neutral', 'Sad', 'Surprised'],
+        datasets: [{
+            data: [
+                emData.angry     || 0,
+                emData.disgusted || 0,
+                emData.fearful   || 0,
+                emData.happy     || 0,
+                emData.neutral   || 0,
+                emData.sad       || 0,
+                emData.surprised || 0
+            ],
+            backgroundColor: ['#fc8181','#c53030','#f6ad55','#68d391','#63b3ed','#f6e05e','#b794f4'],
+            borderWidth: 2,
+            borderColor: '#0d0d2b'
+        }]
+    },
+    options: {
+        responsive: true,
+        animation: false,
+        plugins: {
+            legend: {
+                position: 'right',
+                labels: {
+                    color: '#e2e8f0',
+                    font: { size: 11 },
+                    padding: 8,
+                    usePointStyle: true
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

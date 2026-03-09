@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Admin – StressNet{% endblock %}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+    font-family:'Segoe UI',sans-serif;
+    background:#0d0d2b;color:#e2e8f0;
+    display:flex;min-height:100vh;
+}
+/* Sidebar */
+.sidebar{
+    width:240px;background:rgba(255,255,255,0.03);
+    border-right:1px solid rgba(255,255,255,0.08);
+    display:flex;flex-direction:column;
+    position:fixed;top:0;left:0;height:100vh;
+    z-index:100;
+}
+.sidebar-logo{
+    padding:24px 20px 20px;
+    border-bottom:1px solid rgba(255,255,255,0.08);
+}
+.sidebar-logo .brand{
+    font-size:20px;font-weight:800;
+    background:linear-gradient(90deg,#667eea,#764ba2);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+}
+.sidebar-logo .role{
+    font-size:10px;color:#718096;
+    text-transform:uppercase;letter-spacing:1px;margin-top:2px;
+}
+.nav-section{
+    padding:12px 12px 6px;
+    font-size:10px;color:#4a5568;
+    text-transform:uppercase;letter-spacing:1px;font-weight:600;
+}
+.nav-item{
+    display:flex;align-items:center;gap:10px;
+    padding:10px 20px;margin:1px 8px;
+    border-radius:9px;font-size:13.5px;color:#a0aec0;
+    text-decoration:none;transition:all 0.2s;cursor:pointer;
+}
+.nav-item:hover{background:rgba(255,255,255,0.06);color:#e2e8f0;}
+.nav-item.active{
+    background:rgba(102,126,234,0.15);color:#667eea;font-weight:600;
+}
+.nav-item .icon{font-size:16px;width:20px;text-align:center;}
+.nav-badge{
+    margin-left:auto;background:#fc4949;color:#fff;
+    font-size:10px;padding:2px 6px;border-radius:10px;font-weight:700;
+}
+.sidebar-footer{
+    margin-top:auto;padding:16px 20px;
+    border-top:1px solid rgba(255,255,255,0.08);
+    font-size:12px;
+}
+.admin-name{font-weight:600;color:#e2e8f0;}
+.admin-role{color:#718096;font-size:11px;}
+/* Main */
+.main{margin-left:240px;flex:1;display:flex;flex-direction:column;}
+.topbar{
+    background:rgba(255,255,255,0.02);
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    padding:14px 28px;
+    display:flex;justify-content:space-between;align-items:center;
+    position:sticky;top:0;z-index:50;
+}
+.page-title{font-size:17px;font-weight:700;color:#e2e8f0;}
+.topbar-right{display:flex;align-items:center;gap:14px;}
+.content{padding:28px;flex:1;}
+/* Messages */
+.messages{margin-bottom:16px;}
+.msg{
+    padding:12px 16px;border-radius:10px;
+    font-size:13px;margin-bottom:8px;
+}
+.msg.success{background:rgba(104,211,145,0.15);border:1px solid rgba(104,211,145,0.3);color:#68d391;}
+.msg.error  {background:rgba(252,73,73,0.15); border:1px solid rgba(252,73,73,0.3); color:#fc8181;}
+.msg.warning{background:rgba(246,173,85,0.15);border:1px solid rgba(246,173,85,0.3);color:#f6ad55;}
+</style>
+{% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+    <div class="sidebar-logo">
+        <div style="font-size:28px;margin-bottom:4px;">🧠</div>
+        <div class="brand">StressNet</div>
+        <div class="role">Admin Panel</div>
+    </div>
+
+    <div class="nav-section">Overview</div>
+    <a href="{% url 'admin_dashboard' %}" class="nav-item {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}">
+        <span class="icon">📊</span> Dashboard
+    </a>
+    <a href="{% url 'admin_realtime' %}" class="nav-item {% if request.resolver_match.url_name == 'admin_realtime' %}active{% endif %}">
+        <span class="icon">🔴</span> Live Monitor
+    </a>
+
+    <div class="nav-section">Management</div>
+    <a href="{% url 'admin_employees' %}" class="nav-item {% if 'employees' in request.resolver_match.url_name %}active{% endif %}">
+        <span class="icon">👥</span> Employees
+        {% if notif_count > 0 %}
+        <span class="nav-badge">{{ notif_count }}</span>
+        {% endif %}
+    </a>
+    <a href="{% url 'admin_employees' %}?status=pending" class="nav-item">
+        <span class="icon">⏳</span> Pending Approvals
+    </a>
+
+    <div class="nav-section">System</div>
+    <a href="{% url 'admin_notifications' %}" class="nav-item {% if request.resolver_match.url_name == 'admin_notifications' %}active{% endif %}">
+        <span class="icon">🔔</span> Notifications
+        {% if notif_count > 0 %}
+        <span class="nav-badge">{{ notif_count }}</span>
+        {% endif %}
+    </a>
+    <a href="/admin/" class="nav-item">
+        <span class="icon">⚙️</span> Django Admin
+    </a>
+
+    <div class="sidebar-footer">
+        <div class="admin-name">{{ request.user.get_full_name|default:request.user.username }}</div>
+        <div class="admin-role">Administrator</div>
+        <a href="{% url 'logout_view' %}"
+           style="display:inline-block;margin-top:8px;font-size:12px;
+                  color:#fc8181;text-decoration:none;">
+            🚪 Logout
+        </a>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="main">
+    <div class="topbar">
+        <div class="page-title">{% block page_title %}Admin Panel{% endblock %}</div>
+        <div class="topbar-right">
+            <a href="{% url 'admin_notifications' %}"
+               style="position:relative;text-decoration:none;color:#a0aec0;font-size:18px;">
+                🔔
+                {% if notif_count > 0 %}
+                <span style="position:absolute;top:-6px;right:-6px;
+                             background:#fc4949;color:#fff;
+                             font-size:9px;padding:1px 5px;
+                             border-radius:8px;font-weight:700;">
+                    {{ notif_count }}
+                </span>
+                {% endif %}
+            </a>
+            <div style="font-size:13px;color:#a0aec0;">
+                👤 {{ request.user.username }}
+            </div>
+            <a href="{% url 'logout_view' %}"
+               style="font-size:12px;color:#fc8181;text-decoration:none;
+                      padding:6px 12px;border:1px solid rgba(252,73,73,0.3);
+                      border-radius:7px;">
+                Logout
+            </a>
+        </div>
+    </div>
+
+    <div class="content">
+        {% if messages %}
+        <div class="messages">
+            {% for msg in messages %}
+            <div class="msg {{ msg.tags }}">{{ msg }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </div>
+</div>
+
+{% block extra_js %}{% endblock %}
+</body>
+</html>

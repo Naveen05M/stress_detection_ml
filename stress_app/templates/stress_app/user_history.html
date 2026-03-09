@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My History - StressNet</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',sans-serif;background:#0d0d2b;color:#e2e8f0;}
+.layout{display:flex;min-height:100vh;}
+.sidebar{width:220px;background:rgba(255,255,255,0.03);border-right:1px solid rgba(255,255,255,0.08);display:flex;flex-direction:column;position:fixed;top:0;left:0;height:100vh;}
+.sidebar-logo{padding:22px 18px 18px;border-bottom:1px solid rgba(255,255,255,0.08);}
+.brand{font-size:18px;font-weight:800;background:linear-gradient(90deg,#667eea,#764ba2);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 18px;margin:2px 8px;border-radius:9px;font-size:13px;color:#a0aec0;text-decoration:none;transition:all 0.2s;}
+.nav-item:hover{background:rgba(255,255,255,0.06);color:#e2e8f0;}
+.nav-item.active{background:rgba(102,126,234,0.15);color:#667eea;font-weight:600;}
+.sidebar-footer{margin-top:auto;padding:14px 18px;border-top:1px solid rgba(255,255,255,0.08);}
+.main{margin-left:220px;flex:1;}
+.topbar{background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.06);padding:14px 24px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50;}
+.content{padding:24px;}
+</style>
+</head>
+<body>
+<div class="layout">
+<div class="sidebar">
+    <div class="sidebar-logo">
+        <div style="font-size:26px;margin-bottom:4px;">🧠</div>
+        <div class="brand">StressNet</div>
+        <div style="font-size:10px;color:#718096;margin-top:2px;">Employee Portal</div>
+    </div>
+    <div style="padding:12px;">
+        <div style="background:rgba(102,126,234,0.1);border:1px solid rgba(102,126,234,0.2);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;">
+            <div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;margin:0 auto 6px;color:#fff;">
+                {{ emp.user.first_name|slice:":1" }}{{ emp.user.last_name|slice:":1" }}
+            </div>
+            <div style="font-size:13px;font-weight:700;">{{ emp.full_name }}</div>
+            <div style="font-size:11px;color:#718096;">{{ emp.employee_id }}</div>
+            <div style="font-size:11px;color:#667eea;">{{ emp.department }}</div>
+        </div>
+    </div>
+    <a href="{% url 'user_dashboard' %}" class="nav-item">📊 Dashboard</a>
+    <a href="{% url 'user_live' %}"      class="nav-item">📷 Live Detection</a>
+    <a href="{% url 'user_history' %}"   class="nav-item active">📋 My History</a>
+    <a href="{% url 'user_profile' %}"   class="nav-item">👤 My Profile</a>
+    <div class="sidebar-footer">
+        <a href="{% url 'logout_view' %}" style="font-size:12px;color:#fc8181;text-decoration:none;">🚪 Logout</a>
+    </div>
+</div>
+<div class="main">
+    <div class="topbar">
+        <div style="font-size:16px;font-weight:700;">📋 My Detection History</div>
+        <div style="font-size:13px;color:#718096;">{{ records|length }} total records</div>
+    </div>
+    <div class="content">
+        <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:14px;overflow:auto;">
+        <table style="width:100%;border-collapse:collapse;min-width:700px;">
+            <thead>
+                <tr style="background:rgba(102,126,234,0.1);font-size:11px;color:#a0aec0;text-transform:uppercase;letter-spacing:0.5px;">
+                    <th style="padding:13px 16px;text-align:left;">#</th>
+                    <th style="padding:13px 16px;text-align:left;">Date and Time</th>
+                    <th style="padding:13px 16px;text-align:left;">Emotion</th>
+                    <th style="padding:13px 16px;text-align:center;">Stress Level</th>
+                    <th style="padding:13px 16px;text-align:center;">Confidence</th>
+                    <th style="padding:13px 16px;text-align:center;">Source</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in records %}
+            <tr style="border-top:1px solid rgba(255,255,255,0.06);"
+                onmouseover="this.style.background='rgba(255,255,255,0.03)'"
+                onmouseout="this.style.background='transparent'">
+                <td style="padding:12px 16px;color:#4a5568;font-size:12px;">{{ forloop.counter }}</td>
+                <td style="padding:12px 16px;font-size:12px;color:#a0aec0;">
+                    {{ r.timestamp|date:"d M Y" }}<br>
+                    <span style="color:#718096;">{{ r.timestamp|time:"H:i:s" }}</span>
+                </td>
+                <td style="padding:12px 16px;font-size:13px;font-weight:600;color:#e2e8f0;text-transform:capitalize;">{{ r.emotion }}</td>
+                <td style="padding:12px 16px;text-align:center;">
+                    {% if r.stress_level == "High" %}
+                        <span style="background:rgba(252,73,73,0.15);color:#fc8181;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;">High</span>
+                    {% elif r.stress_level == "Medium" %}
+                        <span style="background:rgba(246,173,85,0.15);color:#f6ad55;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;">Medium</span>
+                    {% else %}
+                        <span style="background:rgba(104,211,145,0.15);color:#68d391;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;">Low</span>
+                    {% endif %}
+                </td>
+                <td style="padding:12px 16px;text-align:center;color:#a0aec0;font-size:13px;">{{ r.confidence|floatformat:1 }}%</td>
+                <td style="padding:12px 16px;text-align:center;">
+                    <span style="background:rgba(255,255,255,0.07);color:#a0aec0;padding:2px 8px;border-radius:8px;font-size:11px;">{{ r.source }}</span>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6" style="padding:60px;text-align:center;color:#4a5568;">
+                    <div style="font-size:40px;margin-bottom:12px;">📋</div>
+                    <div>No records yet. <a href="{% url 'user_live' %}" style="color:#667eea;">Start detection →</a></div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</div>
+</div>
+</body>
+</html>
